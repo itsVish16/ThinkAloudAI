@@ -34,6 +34,7 @@ Kubernetes or multi-host setup.
 
 The production Docker Compose stack runs:
 
+- `caddy` - public HTTPS reverse proxy with automatic TLS
 - `postgres` - one shared PostgreSQL server
 - `redis` - one shared Redis server
 - `datadog-agent` - logs, metrics, and APM collection
@@ -99,6 +100,7 @@ Backend/
   Scalable_User_Service/   # User service
   main_service/            # Chat, DSA, roadmap, system design service
   AI_Interviewer/          # Interview API and realtime worker
+  Caddyfile                # HTTPS reverse proxy routes
   docker-compose.yml       # Single-VM production backend stack
   docker-compose.infra.yml # Local infra-only compose
   init-databases.sql       # Creates per-service Postgres databases
@@ -145,9 +147,11 @@ docker compose logs -f user-service main-service ai-interviewer-api
 
 Default exposed app ports:
 
-- `8000` - user service
-- `8001` - main service
-- `8002` - AI interviewer API
+- `80` - Caddy HTTP challenge/redirect
+- `443` - public HTTPS API
+- `8000` - user service, bound to `127.0.0.1`
+- `8001` - main service, bound to `127.0.0.1`
+- `8002` - AI interviewer API, bound to `127.0.0.1`
 
 Postgres, Redis, and Datadog agent ports are bound to `127.0.0.1` by default and
 should not be opened publicly.
@@ -158,6 +162,18 @@ The frontend is intentionally deployed separately on Vercel and is not pushed in
 this backend deployment repository. Configure the frontend to call the deployed
 backend URLs, and configure backend `CORS_ALLOWED_ORIGINS` with the Vercel
 frontend domain.
+
+For production, point a DNS record such as `api.thinkaloudai.tech` to the EC2
+public IP and set the Vercel frontend variables to HTTPS:
+
+```env
+VITE_USER_SERVICE_URL=https://api.thinkaloudai.tech
+VITE_MAIN_SERVICE_URL=https://api.thinkaloudai.tech
+VITE_AI_SERVICE_URL=https://api.thinkaloudai.tech
+```
+
+The frontend must not call `http://<EC2_PUBLIC_IP>:8000` from an HTTPS page,
+because browsers block that as mixed content.
 
 ## Updating Production
 

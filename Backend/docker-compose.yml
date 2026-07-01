@@ -3,6 +3,7 @@
 # Services:
 #   - postgres: one shared PostgreSQL instance with one database per service
 #   - redis: one shared Redis instance, isolated by logical DB number
+#   - caddy: public HTTPS reverse proxy and automatic TLS
 #   - datadog-agent: metrics, logs, APM receiver
 #   - user-service: auth, users, profile, email/event handling
 #   - main-service: chat, DSA, roadmaps, code execution
@@ -37,6 +38,35 @@ x-service-defaults: &service-defaults
       max-file: "5"
 
 services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: thinkaloud-caddy
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?API_DOMAIN is required}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@thinkaloudai.tech}
+    ports:
+      - "${PUBLIC_HTTP_PORT:-80}:80"
+      - "${PUBLIC_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      user-service:
+        condition: service_healthy
+      main-service:
+        condition: service_healthy
+      ai-interviewer-api:
+        condition: service_healthy
+    networks:
+      - thinkaloud
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
   postgres:
     image: postgres:16-alpine
     container_name: thinkaloud-postgres
@@ -150,7 +180,7 @@ services:
       SQS_EMAIL_QUEUE_URL: ${SQS_EMAIL_QUEUE_URL:-}
       UVICORN_WORKERS: ${USER_SERVICE_WORKERS:-2}
     ports:
-      - "${APP_BIND_ADDRESS:-0.0.0.0}:${USER_SERVICE_PORT:-8000}:8000"
+      - "${APP_BIND_ADDRESS:-127.0.0.1}:${USER_SERVICE_PORT:-8000}:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -199,7 +229,7 @@ services:
       SPEECHMATICS_API_KEY: ${SPEECHMATICS_API_KEY:-}
       TAVILY_API_KEY: ${TAVILY_API_KEY:-}
     ports:
-      - "${APP_BIND_ADDRESS:-0.0.0.0}:${MAIN_SERVICE_PORT:-8001}:8001"
+      - "${APP_BIND_ADDRESS:-127.0.0.1}:${MAIN_SERVICE_PORT:-8001}:8001"
     depends_on:
       postgres:
         condition: service_healthy
@@ -257,7 +287,7 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL:-https://generativelanguage.googleapis.com/v1beta/openai/}
       AUTH_BYPASS: "false"
     ports:
-      - "${APP_BIND_ADDRESS:-0.0.0.0}:${AI_INTERVIEWER_API_PORT:-8002}:8000"
+      - "${APP_BIND_ADDRESS:-127.0.0.1}:${AI_INTERVIEWER_API_PORT:-8002}:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -333,5 +363,7 @@ networks:
     driver: bridge
 
 volumes:
+  caddy-data:
+  caddy-config:
   postgres-data:
   redis-data:
