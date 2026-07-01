@@ -17,20 +17,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml uv.lock* ./
 
-# Tell uv to prefer PyTorch CPU wheels to keep image size small
-ENV UV_EXTRA_INDEX_URL="https://download.pytorch.org/whl/cpu"
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-project --index-strategy unsafe-best-match
+    uv sync --no-dev --no-install-project
 
 COPY app/ ./app/
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --index-strategy unsafe-best-match
+    uv sync --no-dev
 RUN uv run python -c "from livekit.plugins import silero; silero.VAD.load()"
 
 # Target for FastAPI Server
