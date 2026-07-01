@@ -1,0 +1,44 @@
+# Local development infrastructure only.
+#
+# Production/VM deployment should use:
+#   docker compose -f docker-compose.yml up -d --build
+
+name: thinkaloud-infra-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: thinkaloud-dev-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-thinkaloud}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-thinkaloud_dev}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - dev-postgres-data:/var/lib/postgresql/data
+      - ./init-databases.sql:/docker-entrypoint-initdb.d/001-init-databases.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-thinkaloud}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: thinkaloud-dev-redis
+    command: ["redis-server", "--appendonly", "yes", "--loglevel", "warning"]
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - dev-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  dev-postgres-data:
+  dev-redis-data:

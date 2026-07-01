@@ -1,0 +1,54 @@
+# Environments
+.env
+.venv/
+env/
+venv/
+ENV/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Database
+*.db
+*.sqlite3
+chat.db
+
+# Scratch and Temporary files
+scratch/
+tmp/
+.tmp/
+.DS_Store
+test_featherless.py
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Tools
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

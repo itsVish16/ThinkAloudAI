@@ -1,0 +1,63 @@
+# Environments
+.env
+.env.local
+.env.*.local
+.venv/
+venv/
+ENV/
+env/
+.python-version
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE / Project files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files (macOS / Windows trash)
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Archives / Trash
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+*.bak
+*.tmp
+*.log
+
+# Alembic local db (if any)
+*.db
+*.sqlite3
+
+# Scratch / test files
+drop_alembic.py
+*.img
+
+# Experimental test scripts
+test_*
+generate_test_token.py
+patch_sm.py
+
+# Machine Learning Models
+.models/
+*.gguf
+*.onnx
+
+# Agent Artifacts
+docker_agent_prompts.md
+
+

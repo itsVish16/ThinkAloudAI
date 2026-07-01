@@ -1,0 +1,39 @@
+# Environment & Secrets
+.env
+.loadtest_token
+.loadtest_tokens_100
+.loadtest_users.json
+bench_results.txt
+
+# Python & Dependencies
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.python-version
+
+# Tooling Caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Load Test Results
+loadtest_*.csv
+loadtest_*.json
+
+# IDEs
+.vscode/
+.idea/
+
+# OS Specific
+.DS_Store
+Thumbs.db
+
+# Scratch and Temp Scripts
+scratch_*
+fix_db.py
+
+# Assets and Previews
+email_previews/
+*.zip

@@ -1,0 +1,26 @@
+# NOTE: This is the standalone single-service compose.
+# For full-stack deployment (all 3 services + redis + postgres + datadog),
+# use the orchestrating compose at Backend/docker-compose.yml instead.
+
+services:
+  api:
+    build:
+      context: .
+      target: api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/workspace/app
+    env_file:
+      - .env.local
+
+  worker:
+    build:
+      context: .
+      target: worker
+    volumes:
+      - ./app:/workspace/app
+    env_file:
+      - .env.local
+    depends_on:
+      - api

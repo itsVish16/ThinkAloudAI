@@ -1,0 +1,30 @@
+
+# NOTE: This is the standalone single-service compose for local development.
+# For full-stack VM deployment (all services + redis + postgres + datadog),
+# use the orchestrating compose at Backend/docker-compose.yml instead.
+
+services:
+  user_api:
+    build: .
+    container_name: user_service_api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - DD_AGENT_HOST=datadog-agent
+      - DD_SERVICE=user-service
+      - DD_ENV=development
+    restart: unless-stopped
+  datadog-agent:
+    image: gcr.io/datadoghq/agent:latest
+    container_name: datadog_agent
+    environment:
+      - DD_API_KEY=${DD_API_KEY:-your_datadog_api_key_here}
+      - DD_SITE=${DD_SITE:-datadoghq.com}
+      - DD_APM_NON_LOCAL_TRAFFIC=true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc/:/host/proc/:ro
+      - /sys/fs/cgroup/:/host/sys/fs/cgroup:ro
+    restart: unless-stopped

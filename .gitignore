@@ -1,0 +1,90 @@
+# Keep this root repo backend-only.
+Frontend/
+
+# OS / editor noise
+.DS_Store
+._*
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Secrets and local environment files
+.env
+.env.*
+!.env.example
+!.env.sample
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Python local environments and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+ENV/
+.python-version
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Build / package artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+wheels/
+*.whl
+
+# Local databases and generated data
+*.db
+*.sqlite
+*.sqlite3
+Backend/**/data/
+Backend/**/.models/
+
+# Logs, temp files, archives
+*.log
+*.tmp
+*.bak
+tmp/
+temp/
+scratch/
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# Node / frontend artifacts if any appear outside Frontend/
+node_modules/
+.next/
+.vite/
+coverage/
+
+# Vendored Lambda build output; keep only source files and requirements.
+Backend/Scalable_User_Service/infra/lambda_email_sender/bin/
+Backend/Scalable_User_Service/infra/lambda_email_sender/*.dist-info/
+Backend/Scalable_User_Service/infra/lambda_email_sender/certifi/
+Backend/Scalable_User_Service/infra/lambda_email_sender/charset_normalizer/
+Backend/Scalable_User_Service/infra/lambda_email_sender/idna/
+Backend/Scalable_User_Service/infra/lambda_email_sender/requests/
+Backend/Scalable_User_Service/infra/lambda_email_sender/resend/
+Backend/Scalable_User_Service/infra/lambda_email_sender/urllib3/
+Backend/Scalable_User_Service/infra/lambda_email_sender/typing_extensions.py
+Backend/Scalable_User_Service/infra/lambda_email_sender/*__mypyc*.so
+Backend/Scalable_User_Service/infra/lambda_email_sender/.lock
+
+# Ad-hoc local debug scripts
+Backend/main_service/query_db.py
+Backend/main_service/test_db.py
+Backend/main_service/test_stream.py

@@ -1,0 +1,15 @@
+# NOTE: This is the standalone single-service compose for local development.
+# For full-stack VM deployment (all services + redis + postgres + datadog),
+# use the orchestrating compose at Backend/docker-compose.yml instead.
+
+version: '3.8'
+
+services:
+  main_api:
+    build: .
+    container_name: main_service_api
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    restart: unless-stopped
