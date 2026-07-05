@@ -34,7 +34,7 @@ Kubernetes or multi-host setup.
 
 The production Docker Compose stack runs:
 
-- `caddy` - public HTTPS reverse proxy with automatic TLS
+- `nginx` - public HTTP/HTTPS reverse proxy and API Gateway
 - `postgres` - one shared PostgreSQL server
 - `redis` - one shared Redis server
 - `datadog-agent` - logs, metrics, and APM collection
@@ -58,26 +58,68 @@ Redis uses one logical DB per service:
 ## Request Flow
 
 ```mermaid
-flowchart LR
-    Frontend["React Frontend on Vercel"]
-    User["User Service"]
-    Main["Main Service"]
-    InterviewAPI["AI Interviewer API"]
-    InterviewWorker["AI Interviewer Worker"]
-    Postgres["Postgres"]
-    Redis["Redis"]
-    Datadog["Datadog Agent"]
-    LiveKit["LiveKit"]
+flowchart TD
+    %% Styling
+    classDef cloud fill:#f9f9f9,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5;
+    classDef ec2 fill:#eef2ff,stroke:#5e6ad2,stroke-width:2px;
+    classDef db fill:#f0fdf4,stroke:#22c55e,stroke-width:2px;
+    classDef proxy fill:#fff1f2,stroke:#f43f5e,stroke-width:2px;
+    classDef service fill:#ffffff,stroke:#333,stroke-width:1px;
 
-    Frontend --> User
-    Frontend --> Main
-    Frontend --> InterviewAPI
+    %% Third Party
+    subgraph ThirdParty["External Services & APIs"]
+        LiveKit["LiveKit Cloud\n(WebRTC)"]
+        LLM["LLMs\n(OpenAI, Gemini)"]
+        Datadog["Datadog\n(Observability)"]
+    end
+    class ThirdParty cloud
 
+    %% Vercel
+    subgraph Vercel["Vercel Edge Network"]
+        Frontend["React Frontend\n(Vite + Tailwind)"]
+    end
+    class Vercel cloud
+
+    %% AWS EC2
+    subgraph AWS_EC2["AWS EC2 Instance (Single Node Deployment)"]
+        Nginx["Nginx Reverse Proxy\n(API Gateway)"]:::proxy
+        
+        subgraph Microservices["Dockerized Microservices"]
+            User["User Service\n(FastAPI)"]:::service
+            Main["Main Service\n(FastAPI)"]:::service
+            InterviewAPI["AI Interviewer API\n(FastAPI)"]:::service
+            InterviewWorker["AI Interviewer Worker\n(LiveKit VLM)"]:::service
+        end
+        
+        subgraph DataLayer["Data Layer"]
+            Postgres[("PostgreSQL\n(Isolated Schemas)")]:::db
+            Redis[("Redis\n(Isolated DBs)")]:::db
+        end
+
+        DatadogAgent["Datadog Agent"]:::service
+    end
+    class AWS_EC2 ec2
+
+    %% Client Connections
+    Frontend -- "REST /api/*" --> Nginx
+    Frontend -- "WebRTC / Audio" --> LiveKit
+
+    %% Internal Routing
+    Nginx -- "/api/v1/users" --> User
+    Nginx -- "/sessions, /dsa" --> Main
+    Nginx -- "/api/interview-types" --> InterviewAPI
+
+    %% Service to Service
     Main --> User
     InterviewAPI --> User
     InterviewAPI --> Main
-    InterviewWorker --> LiveKit
 
+    %% Workers and External
+    InterviewWorker <--> LiveKit
+    InterviewWorker --> LLM
+    Main --> LLM
+
+    %% Data Connections
     User --> Postgres
     Main --> Postgres
     InterviewAPI --> Postgres
@@ -87,10 +129,9 @@ flowchart LR
     InterviewAPI --> Redis
     InterviewWorker --> Redis
 
-    User --> Datadog
-    Main --> Datadog
-    InterviewAPI --> Datadog
-    InterviewWorker --> Datadog
+    %% Monitoring
+    Microservices -. "Metrics/Logs" .-> DatadogAgent
+    DatadogAgent -.-> Datadog
 ```
 
 ## Backend Layout
@@ -100,8 +141,8 @@ Backend/
   Scalable_User_Service/   # User service
   main_service/            # Chat, DSA, roadmap, system design service
   AI_Interviewer/          # Interview API and realtime worker
-  Caddyfile                # HTTPS reverse proxy routes
-  docker-compose.yml       # Single-VM production backend stack
+  nginx.conf               # Nginx reverse proxy routes
+  docker-compose.yml       # Complete EC2 production backend stack
   docker-compose.infra.yml # Local infra-only compose
   init-databases.sql       # Creates per-service Postgres databases
   DEPLOYMENT.md            # Deployment commands and operations notes
@@ -147,8 +188,8 @@ docker compose logs -f user-service main-service ai-interviewer-api
 
 Default exposed app ports:
 
-- `80` - Caddy HTTP challenge/redirect
-- `443` - public HTTPS API
+- `80` - Nginx HTTP
+- `443` - Nginx HTTPS
 - `8000` - user service, bound to `127.0.0.1`
 - `8001` - main service, bound to `127.0.0.1`
 - `8002` - AI interviewer API, bound to `127.0.0.1`
