@@ -309,6 +309,7 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: thinkaloud-dev-postgres
+    networks: *id001
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-thinkaloud}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-thinkaloud_dev}
@@ -328,6 +329,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: thinkaloud-dev-redis
+    networks: *id001
     command:
     - redis-server
     - --appendonly
