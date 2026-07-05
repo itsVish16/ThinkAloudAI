@@ -229,7 +229,7 @@ async def get_user_recommendations(db: AsyncSession = Depends(get_db), user_id: 
     """
     result = await db.execute(
         select(Recommendation)
-        .filter(Recommendation.user_id == user_id)
+        .filter(Recommendation.session_id == user_id)
         .order_by(Recommendation.created_at.desc())
     )
     return result.scalars().all()

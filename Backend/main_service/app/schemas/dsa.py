@@ -51,8 +51,8 @@ class CodeSubmissionOut(BaseModel):
 class UserProblemStatusOut(BaseModel):
     question_id: int
     status: str
-    best_execution_time_ms: Optional[float] = None
-    best_memory_used_kb: Optional[float] = None
+    best_runtime_ms: Optional[float] = None
+    best_memory_kb: Optional[float] = None
     last_attempted_at: datetime.datetime
 
     model_config = ConfigDict(from_attributes=True)
