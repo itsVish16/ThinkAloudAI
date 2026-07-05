@@ -19,7 +19,7 @@ router = APIRouter(prefix="/roadmaps", tags=["Roadmaps"])
 def get_current_user_id() -> str:
     return "test_user_id"
 
-@router.get("/", response_model=List[RoadmapOut])
+@router.get("", response_model=List[RoadmapOut])
 async def get_user_roadmaps(db: AsyncSession = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     """Retrieve all roadmaps for the current user and general roadmaps."""
     query = (

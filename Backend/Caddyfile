@@ -1,0 +1,41 @@
+api.thinkaloudai.tech {
+    encode gzip
+
+    # User Service specific routes
+    handle /api/v1/users* {
+        reverse_proxy user-service:8000
+    }
+    handle /health {
+        reverse_proxy user-service:8000
+    }
+
+    # AI Interviewer specific routes (catch-all for other /api/)
+    handle /api/* {
+        reverse_proxy ai-interviewer-api:8000
+    }
+
+    # Main service specific routes
+    handle /sessions* {
+        reverse_proxy main-service:8001
+    }
+    handle /chat* {
+        reverse_proxy main-service:8001
+    }
+    handle /dsa* {
+        reverse_proxy main-service:8001
+    }
+    handle /roadmaps* {
+        reverse_proxy main-service:8001
+    }
+    handle /system-design* {
+        reverse_proxy main-service:8001
+    }
+    handle /users* {
+        reverse_proxy main-service:8001
+    }
+
+    # Default fallback to main service
+    handle {
+        reverse_proxy main-service:8001
+    }
+}

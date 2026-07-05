@@ -18,13 +18,16 @@ x-service-defaults:
       max-size: 10m
       max-file: '5'
 services:
-  nginx:
-    image: nginx:alpine
-    container_name: thinkaloud-nginx
+  caddy:
+    image: caddy:alpine
+    container_name: thinkaloud-caddy
     ports:
     - ${PUBLIC_HTTP_PORT:-80}:80
+    - "443:443"
     volumes:
-    - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    - caddy_data:/data
+    - caddy_config:/config
     depends_on:
       user-service:
         condition: service_healthy
@@ -356,3 +359,5 @@ networks:
 volumes:
   postgres-data: null
   redis-data: null
+  caddy_data: null
+  caddy_config: null
