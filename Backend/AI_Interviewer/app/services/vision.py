@@ -59,7 +59,7 @@ class LocalVLMService:
             
             prompt_text = "Describe the candidate's facial expression, focus, and body language in one short sentence."
             if is_whiteboard:
-                prompt_text = "Analyze this system architecture diagram. Describe the components, data flow, and database choices you see on the whiteboard."
+                prompt_text = "Analyze this system architecture diagram. If the whiteboard is blank or mostly empty, say 'The whiteboard is currently blank.' Otherwise, strictly describe ONLY the components, text, and data flows that are visibly drawn. Do NOT hallucinate or assume standard architecture components."
 
             response = await self.client.chat.completions.create(
                 model=self.model,

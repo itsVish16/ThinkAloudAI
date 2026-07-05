@@ -33,6 +33,7 @@ async def save_interview_session(
     session_id: str, 
     user_id: str, 
     candidate_name: str, 
+    interview_type: str,
     stage: str, 
     resume_summary: Optional[str], 
     state_data: Dict[str, Any]
@@ -50,6 +51,7 @@ async def save_interview_session(
                 id=session_id,
                 user_id=user_id,
                 candidate_name=candidate_name,
+                interview_type=interview_type,
                 stage=stage,
                 state_data=state_data,
                 created_at=datetime.now(UTC).replace(tzinfo=None)
@@ -75,13 +77,21 @@ async def get_interview_session(session_id: str) -> Optional[Dict[str, Any]]:
             
         feedback_data = None
         if interview.feedback:
+            import json
+            def safe_json_load(val):
+                if not val: return []
+                try:
+                    return json.loads(val)
+                except (json.JSONDecodeError, TypeError):
+                    return [val]
+
             feedback_data = {
                 "technical_score": interview.feedback.technical_score,
                 "communication_score": interview.feedback.communication_score,
                 "english_score": interview.feedback.english_score,
-                "strengths": interview.feedback.strengths,
-                "weaknesses": interview.feedback.weaknesses,
-                "improvement_plan": interview.feedback.improvement_plan,
+                "strengths": safe_json_load(interview.feedback.strengths),
+                "weaknesses": safe_json_load(interview.feedback.weaknesses),
+                "improvement_plan": safe_json_load(interview.feedback.improvement_plan),
                 "recommended_topics": interview.feedback.recommended_topics
             }
             
@@ -89,6 +99,7 @@ async def get_interview_session(session_id: str) -> Optional[Dict[str, Any]]:
             "id": interview.id,
             "user_id": interview.user_id,
             "candidate_name": interview.candidate_name,
+            "interview_type": interview.interview_type,
             "stage": interview.stage,
             "state_data": interview.state_data,
             "feedback": feedback_data,

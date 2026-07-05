@@ -4,6 +4,8 @@ from datetime import datetime
 class SystemDesignQuestionBase(BaseModel):
     title: str
     description: str
+    domain: str | None = None
+    role: str | None = None
 
 class SystemDesignQuestionCreate(SystemDesignQuestionBase):
     pass

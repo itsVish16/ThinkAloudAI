@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from typing import List
+from sqlalchemy import text
 
 from app.database import get_db, get_redis
 from app.config import settings
@@ -13,20 +14,51 @@ from langchain_core.messages import SystemMessage, HumanMessage
 
 router = APIRouter(prefix="/system-design", tags=["System Design Questions"])
 
+@router.post("/seed")
+async def seed_questions(db: AsyncSession = Depends(get_db), redis=Depends(get_redis)):
+    # Delete all existing
+    await db.execute(text("TRUNCATE TABLE system_design_questions RESTART IDENTITY CASCADE"))
+    
+    questions = [
+        {"title": "Design a Distributed Message Queue", "description": "Design a distributed message queue system like Apache Kafka or RabbitMQ. Focus on partitioning, replication, message durability, and consumer groups.", "domain": "Backend", "role": "Senior Software Engineer"},
+        {"title": "Design a URL Shortener", "description": "Design a scalable URL shortener like bit.ly. Focus on collision prevention, capacity estimation, caching strategies, and highly available reads.", "domain": "Backend", "role": "Software Engineer"},
+        {"title": "Design a Recommendation System for Netflix", "description": "Design a video recommendation system. Focus on the ML pipeline, feature store, real-time vs batch inference, and model serving infrastructure.", "domain": "AI/ML", "role": "Senior Software Engineer"},
+        {"title": "Design a RAG-based Customer Support Chatbot", "description": "Design a Retrieval-Augmented Generation (RAG) customer support agent. Discuss vector database scaling, embedding generation, context window management, and handling hallucinations.", "domain": "AI/ML", "role": "Software Engineer"}
+    ]
+    
+    for q in questions:
+        new_q = SystemDesignQuestion(**q)
+        db.add(new_q)
+    
+    await db.commit()
+    
+    # Flush redis cache
+    await redis.flushall()
+    
+    return {"message": "Seeded 4 questions and flushed cache"}
+
 @router.get("/questions", response_model=List[SystemDesignQuestionOut])
 async def list_questions(
+    domain: str = None,
+    role: str = None,
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis)
 ):
     """
     List all available System Design questions.
     """
-    cache_key = "system_design:questions:all"
+    cache_key = f"system_design:questions:all:{domain}:{role}"
     cached = await redis.get(cache_key)
     if cached:
         return json.loads(cached)
 
-    result = await db.execute(select(SystemDesignQuestion))
+    query = select(SystemDesignQuestion)
+    if domain:
+        query = query.filter(SystemDesignQuestion.domain == domain)
+    if role:
+        query = query.filter(SystemDesignQuestion.role == role)
+
+    result = await db.execute(query)
     questions = result.scalars().all()
 
     def _serialize(q):

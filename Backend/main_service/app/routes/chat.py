@@ -272,16 +272,32 @@ async def chat_stream(request: ChatStreamRequest, user_id: str = Depends(get_cur
                         run_id = event.get("run_id", "")
                         
                         if name == "create_user_roadmap":
-                            import re
-                            match = re.search(r"ID (\d+)", str(tool_output))
-                            if match:
-                                roadmap_id = match.group(1)
-                                await redis_client.rpush("chat:buffer", json.dumps({
-                                    "session_id": session_id,
-                                    "role": "roadmap",
-                                    "content": roadmap_id
-                                }))
-                        yield f"data: {json.dumps({'type': 'tool_end', 'id': run_id, 'tool': name, 'output': str(tool_output), 'time': time.time()})}\n\n"
+                            if "Error creating roadmap" not in str(tool_output):
+                                try:
+                                    # Robustly extract ID by fetching the latest roadmap for the user
+                                    async with SessionLocal() as db_session:
+                                        from sqlalchemy.future import select
+                                        from app.models.roadmap import Roadmap
+                                        result = await db_session.execute(
+                                            select(Roadmap)
+                                            .filter(Roadmap.user_id == "test_user_id") # Match hardcoded user_id in tool
+                                            .order_by(Roadmap.created_at.desc())
+                                        )
+                                        latest_roadmap = result.scalars().first()
+                                        if latest_roadmap:
+                                            await redis_client.rpush("chat:buffer", json.dumps({
+                                                "session_id": session_id,
+                                                "role": "roadmap",
+                                                "content": str(latest_roadmap.id)
+                                            }))
+                                except Exception as e:
+                                    logger.error(f"Error buffering roadmap: {e}")
+                                    
+                        status = "completed"
+                        if "Error creating roadmap" in str(tool_output):
+                            status = "failed"
+                            
+                        yield f"data: {json.dumps({'type': 'tool_end', 'id': run_id, 'tool': name, 'output': str(tool_output), 'status': status, 'time': time.time()})}\n\n"
 
                 if stream_buffer:
                     if in_think:
@@ -342,11 +358,15 @@ async def get_session_messages(session_id: str, db: AsyncSession = Depends(get_d
                     role=msg_data["role"],
                     content=msg_data["content"]
                 ))
-        except Exception:
+        except json.JSONDecodeError:
             pass
-            
     return db_msgs
 
+@router.get("/debug/messages")
+async def debug_messages(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(ChatMessageModel).order_by(ChatMessageModel.id.desc()).limit(20))
+    msgs = result.scalars().all()
+    return [{"id": m.id, "session_id": m.session_id, "role": m.role, "content": m.content[:100]} for m in msgs]
 
 @router.delete("/sessions/{session_id}")
 async def delete_session(session_id: str, db: AsyncSession = Depends(get_db), user_id: str = Depends(get_current_user_id)):

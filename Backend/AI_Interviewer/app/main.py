@@ -9,8 +9,10 @@ from starlette.requests import Request
 from contextlib import asynccontextmanager
 
 from app.services.livekit_api import generate_livekit_token
-from app.services.db import get_interview_session, init_db
+from app.services.db import get_interview_session, save_interview_session, init_db
 from app.services.auth import get_current_user
+from app.services.analysis import analyze_and_save_interview
+import asyncio
 from app.config import settings
 
 # Middleware to normalize double slashes in incoming request paths
@@ -40,6 +42,8 @@ class TokenRequest(BaseModel):
     room_name: str = Field(..., description="Unique identifier for the interview room", examples=["interview_59182"])
     interview_type: str = Field("general", description="Type of interview to conduct", examples=["swe", "pm", "general"])
     question_ids: Optional[List[str]] = Field(None, description="Optional specific question IDs to use for this interview")
+    domain: Optional[str] = Field(None, description="Domain context for system design interviews")
+    role: Optional[str] = Field(None, description="Target role for system design interviews")
 
 class TokenResponse(BaseModel):
     token: str = Field(..., description="LiveKit JWT access token for WebRTC connection")
@@ -148,7 +152,14 @@ async def get_token(
                     else:
                         ai_selected_questions = random.sample(dsa_pool, min(2, len(dsa_pool)))
             elif payload.interview_type == "system_design":
-                response = await client.get(f"{settings.MAIN_SERVICE_URL}/system-design/questions")
+                url = f"{settings.MAIN_SERVICE_URL}/system-design/questions"
+                query_params = {}
+                if payload.domain:
+                    query_params["domain"] = payload.domain
+                if payload.role:
+                    query_params["role"] = payload.role
+                
+                response = await client.get(url, params=query_params)
                 if response.status_code == 200:
                     sd_pool = response.json()
                     if payload.question_ids:
@@ -158,7 +169,7 @@ async def get_token(
     except Exception as e:
         print(f"Error fetching questions: {e}")
 
-    # Generate room JWT embedding candidate metadata
+    # Generate room JWT embedding candidate metadata (LiveKit might truncate this, so we ALSO save to DB)
     token = generate_livekit_token(
         identity=username, 
         room_name=payload.room_name, 
@@ -166,6 +177,36 @@ async def get_token(
         interview_type=payload.interview_type,
         ai_selected_questions=ai_selected_questions
     )
+
+    import time
+    initial_state = {
+        "stage": "intro_audio_check",
+        "messages": [],
+        "candidate_name": username,
+        "resume_summary": "",
+        "evaluations": [],
+        "start_time": time.time(),
+        "max_duration_minutes": 50,
+        "interview_type": payload.interview_type,
+        "latest_visual_context": None,
+        "ai_selected_questions": ai_selected_questions,
+        "active_question_index": 0,
+        "latest_code": None,
+        "latest_execution": None,
+        "latest_whiteboard_context": None
+    }
+    
+    # Save session immediately so worker.py can retrieve large question payloads safely
+    await save_interview_session(
+        session_id=payload.room_name,
+        user_id=user_id,
+        candidate_name=username,
+        interview_type=payload.interview_type,
+        stage="intro_audio_check",
+        resume_summary=None,
+        state_data=initial_state
+    )
+
 
     return {
         "token": token,
@@ -212,6 +253,58 @@ async def get_interview_details(
     }
 
 from app.services.db import get_all_interviews_for_user
+
+@app.post(
+    "/api/interview/{room_name}/end",
+    summary="Force End Interview",
+    description="Manually ends an active interview session and triggers the background analysis pipeline.",
+    responses={
+        200: {"description": "Interview ended successfully"},
+        401: {"description": "Missing or invalid authorization token"},
+        403: {"description": "User does not own this interview session"},
+        404: {"description": "Interview session not found"}
+    }
+)
+async def force_end_interview(
+    room_name: str,
+    current_user: dict = Depends(get_current_user)
+):
+    session = await get_interview_session(room_name)
+    if not session:
+        raise HTTPException(status_code=404, detail="Interview Session not found...")
+    
+    # Ownership verification
+    if session["user_id"] != current_user["user_id"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: You do not have permission to modify this interview."
+        )
+        
+    if session["stage"] != "completed":
+        # Save as completed
+        await save_interview_session(
+            session_id=session["id"],
+            user_id=session["user_id"],
+            candidate_name=session["candidate_name"],
+            interview_type=session.get("interview_type") or "Behavioral",
+            stage="completed",
+            resume_summary=None,
+            state_data=session["state_data"]
+        )
+        
+        # Trigger background analysis
+        messages = session["state_data"].get("messages", [])
+        asyncio.create_task(
+            analyze_and_save_interview(
+                session_id=session["id"],
+                user_id=session["user_id"],
+                candidate_name=session["candidate_name"],
+                interview_type=session.get("interview_type") or "Behavioral",
+                messages=messages
+            )
+        )
+    
+    return {"status": "success", "message": "Interview marked as completed and analysis triggered"}
 
 @app.get(
     "/api/interviews/me",

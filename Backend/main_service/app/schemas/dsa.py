@@ -9,6 +9,11 @@ class DSAQuestionBase(BaseModel):
     test_cases: str # Stored as JSON string
     python_starter_code: Optional[str] = None
     cpp_starter_code: Optional[str] = None
+    cpp_test_harness: Optional[str] = None
+    function_name: Optional[str] = "solution"
+    hints: Optional[str] = None
+    optimal_time_complexity: Optional[str] = None
+    optimal_space_complexity: Optional[str] = None
 
 class DSAQuestionCreate(DSAQuestionBase):
     pass

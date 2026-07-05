@@ -1,5 +1,5 @@
 from app.agent.state import InterviewState
-from app.agent.prompts import STAGE_PROMPTS, EVALUATION_PROMPT
+from app.agent.prompts import STAGE_PROMPTS, EVALUATION_PROMPT, EVALUATOR_RULES
 from app.agent.llm import call_llm, evaluate_llm
 import time
 
@@ -37,7 +37,8 @@ async def generate_response(state: InterviewState):
         ai_selected_questions=questions,
         current_active_question=active_q,
         latest_code=state.get("latest_code", "None yet"),
-        latest_execution=state.get("latest_execution", "None yet")
+        latest_execution=state.get("latest_execution", "None yet"),
+        latest_whiteboard_context=state.get("latest_whiteboard_context", "No visual data yet")
     )
 
     
@@ -61,7 +62,8 @@ async def evaluate_and_route(state: InterviewState):
         return {}
         
     # Build evaluation prompt with current stage context
-    eval_prompt = EVALUATION_PROMPT.format(stage=current_stage)
+    stage_rule = EVALUATOR_RULES.get(current_stage, "Advance when objective is met.")
+    eval_prompt = EVALUATION_PROMPT.format(stage=current_stage, stage_rule=stage_rule)
     
     # Evaluate the conversation
     eval_result = await evaluate_llm(state["messages"], eval_prompt)

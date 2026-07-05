@@ -10,6 +10,15 @@ from app.schemas.dsa import DSAQuestionCreate, DSAQuestionOut, CodeSubmitRequest
 
 router = APIRouter(prefix="/dsa", tags=["DSA Questions"])
 
+@router.get("/debug/median")
+async def get_median_debug(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(DSAQuestion).filter(DSAQuestion.title == "Median of Two Sorted Arrays"))
+    q = result.scalar_one_or_none()
+    if q:
+        return {"raw": q.description}
+    return {"raw": "not found"}
+
+
 def get_current_user_id() -> str:
     return "test_user_id"
 

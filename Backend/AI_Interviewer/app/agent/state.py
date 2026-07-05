@@ -7,6 +7,7 @@ class InterviewStage(str, Enum):
     INTRO_AUDIO_CHECK = "intro_audio_check"
     INTRO_AGENDA = "intro_agenda"
     INTRO_CANDIDATE = "intro_candidate"
+    INTRO_EDITOR = "intro_editor"
     
     # Core stages (shared/modular)
     RESUME_PROBE = "resume_probe"
@@ -26,7 +27,6 @@ class EvaluationResult(BaseModel):
     score: int = Field(description="Score from 1-5 evaluating the candidate's last answer. 0 if the user just asked a question or dodged.")
     feedback: str = Field(description="Brief internal note on the candidate's performance or behavior in the last turn.")
     objective_met: bool = Field(description="True ONLY IF the interviewer has gathered enough information to complete the current interview stage.")
-    next_stage: Optional[InterviewStage] = Field(description="The next stage to transition to, IF objective_met is true.")
     trigger_next_question: bool = Field(default=False, description="Set to True ONLY if the candidate has successfully passed the current coding question and is ready for a new coding problem.")
 
 class InterviewState(TypedDict):

@@ -1,7 +1,7 @@
 from langgraph.graph import StateGraph, END
 from app.agent.state import InterviewState, InterviewStage
 from app.agent.graphs.base import generate_response
-from app.agent.prompts import EVALUATION_PROMPT
+from app.agent.prompts import EVALUATION_PROMPT, EVALUATOR_RULES
 from app.agent.llm import evaluate_llm
 import time
 
@@ -29,9 +29,8 @@ INTERVIEW_FLOWS = {
     ],
     "dsa": [
         InterviewStage.INTRO_AUDIO_CHECK.value,
-        InterviewStage.INTRO_AGENDA.value,
         InterviewStage.INTRO_CANDIDATE.value,
-        InterviewStage.RESUME_PROBE.value,
+        InterviewStage.INTRO_EDITOR.value,
         InterviewStage.DSA_CORE.value,
         InterviewStage.CANDIDATE_QA.value,
         InterviewStage.WRAP_UP.value,
@@ -96,7 +95,8 @@ def build_graph(interview_type: str):
         if current_stage == InterviewStage.COMPLETED.value:
             return {}
             
-        eval_prompt = EVALUATION_PROMPT.format(stage=current_stage)
+        stage_rule = EVALUATOR_RULES.get(current_stage, "Advance when objective is met.")
+        eval_prompt = EVALUATION_PROMPT.format(stage=current_stage, stage_rule=stage_rule)
         eval_result = await evaluate_llm(state["messages"], eval_prompt)
         
         evals = state.get("evaluations", [])

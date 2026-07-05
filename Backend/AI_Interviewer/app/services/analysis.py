@@ -80,9 +80,9 @@ async def analyze_and_save_interview(session_id: str, user_id: str, candidate_na
                 technical_score=data.get("technical_score", 0),
                 communication_score=data.get("communication_score", 0),
                 english_score=data.get("english_score", 0),
-                strengths=data.get("strengths", ""),
-                weaknesses=data.get("weaknesses", ""),
-                improvement_plan=data.get("improvement_plan", ""),
+                strengths=json.dumps(data.get("strengths", [])),
+                weaknesses=json.dumps(data.get("weaknesses", [])),
+                improvement_plan=json.dumps(data.get("improvement_plan", [])),
                 recommended_topics=data.get("recommended_topics", [])
             )
             db.add(feedback)

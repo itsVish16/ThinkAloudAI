@@ -1,4 +1,4 @@
-# Keep this root repo backend-only.
+# Keep this root repo clean
 Frontend/
 
 # OS / editor noise
@@ -88,3 +88,12 @@ Backend/Scalable_User_Service/infra/lambda_email_sender/.lock
 Backend/main_service/query_db.py
 Backend/main_service/test_db.py
 Backend/main_service/test_stream.py
+
+# Ad-hoc temporary files
+check_db.py
+check_tc.py
+test_regex.py
+test_api.py
+temp_q.json
+update_compose.py
+temp/

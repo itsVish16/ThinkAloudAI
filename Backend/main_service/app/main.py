@@ -22,12 +22,29 @@ from app.worker import start_event_consumer
 from app.services.chat_batcher import start_chat_batch_writer
 
 
+from sqlalchemy import text
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Modern lifespan context manager (replaces deprecated on_event)."""
     # Startup: create tables and start event consumer
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        
+        # Add domain and role columns if they don't exist (Postgres 9.6+)
+        await conn.execute(text("ALTER TABLE system_design_questions ADD COLUMN IF NOT EXISTS domain VARCHAR;"))
+        await conn.execute(text("ALTER TABLE system_design_questions ADD COLUMN IF NOT EXISTS role VARCHAR;"))
+        
+        # Seed initial system design questions
+        res = await conn.execute(text("SELECT COUNT(*) FROM system_design_questions"))
+        if res.scalar() == 0:
+            await conn.execute(text("""
+                INSERT INTO system_design_questions (title, description, domain, role, created_at) VALUES 
+                ('Design a Distributed Message Queue', 'Design a distributed message queue system like Apache Kafka or RabbitMQ. Focus on partitioning, replication, message durability, and consumer groups.', 'Backend', 'Senior Software Engineer', NOW()),
+                ('Design a URL Shortener', 'Design a scalable URL shortener like bit.ly. Focus on collision prevention, capacity estimation, caching strategies, and highly available reads.', 'Backend', 'Software Engineer', NOW()),
+                ('Design a Recommendation System for Netflix', 'Design a video recommendation system. Focus on the ML pipeline, feature store, real-time vs batch inference, and model serving infrastructure.', 'AI/ML', 'Senior Software Engineer', NOW()),
+                ('Design a RAG-based Customer Support Chatbot', 'Design a Retrieval-Augmented Generation (RAG) customer support agent. Discuss vector database scaling, embedding generation, context window management, and handling hallucinations.', 'AI/ML', 'Software Engineer', NOW());
+            """))
     consumer_task = asyncio.create_task(start_event_consumer())
     chat_batcher_task = asyncio.create_task(start_chat_batch_writer())
     yield

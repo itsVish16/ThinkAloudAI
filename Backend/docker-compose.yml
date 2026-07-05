@@ -1,56 +1,30 @@
-# ThinkAloud.AI Backend - single VM deployment stack
-#
-# Services:
-#   - postgres: one shared PostgreSQL instance with one database per service
-#   - redis: one shared Redis instance, isolated by logical DB number
-#   - caddy: public HTTPS reverse proxy and automatic TLS
-#   - datadog-agent: metrics, logs, APM receiver
-#   - user-service: auth, users, profile, email/event handling
-#   - main-service: chat, DSA, roadmaps, code execution
-#   - ai-interviewer-api: LiveKit token/interview API
-#   - ai-interviewer-worker: LiveKit realtime worker
-#
-# Usage:
-#   cp .env.example .env
-#   edit .env
-#   docker compose up -d --build
-
 name: thinkaloud-backend
-
-x-common-env: &common-env
+x-common-env:
   DD_AGENT_HOST: datadog-agent
-  DD_TRACE_AGENT_PORT: "8126"
-  DD_DOGSTATSD_PORT: "8125"
+  DD_TRACE_AGENT_PORT: '8126'
+  DD_DOGSTATSD_PORT: '8125'
   DD_ENV: ${DD_ENV:-production}
   DD_VERSION: ${APP_VERSION:-latest}
   DD_TRACE_ENABLED: ${DD_TRACE_ENABLED:-true}
   DD_LOGS_INJECTION: ${DD_LOGS_INJECTION:-true}
-
-x-service-defaults: &service-defaults
+x-service-defaults:
   init: true
-  networks:
-    - thinkaloud
+  networks: &id001
+  - thinkaloud
   restart: unless-stopped
-  logging:
+  logging: &id002
     driver: json-file
     options:
-      max-size: "10m"
-      max-file: "5"
-
+      max-size: 10m
+      max-file: '5'
 services:
-  caddy:
-    image: caddy:2-alpine
-    container_name: thinkaloud-caddy
-    environment:
-      API_DOMAIN: ${API_DOMAIN:?API_DOMAIN is required}
-      ACME_EMAIL: ${ACME_EMAIL:-admin@thinkaloudai.tech}
+  nginx:
+    image: nginx:alpine
+    container_name: thinkaloud-nginx
     ports:
-      - "${PUBLIC_HTTP_PORT:-80}:80"
-      - "${PUBLIC_HTTPS_PORT:-443}:443"
+    - ${PUBLIC_HTTP_PORT:-80}:80
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
+    - ./nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       user-service:
         condition: service_healthy
@@ -59,71 +33,13 @@ services:
       ai-interviewer-api:
         condition: service_healthy
     networks:
-      - thinkaloud
+    - thinkaloud
     restart: unless-stopped
     logging:
       driver: json-file
       options:
-        max-size: "10m"
-        max-file: "5"
-
-  postgres:
-    image: postgres:16-alpine
-    container_name: thinkaloud-postgres
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
-    ports:
-      - "${INFRA_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ./init-databases.sql:/docker-entrypoint-initdb.d/001-init-databases.sql:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
-    networks:
-      - thinkaloud
-    restart: unless-stopped
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "5"
-
-  redis:
-    image: redis:7-alpine
-    container_name: thinkaloud-redis
-    command:
-      - redis-server
-      - --appendonly
-      - "yes"
-      - --save
-      - "60"
-      - "1"
-      - --loglevel
-      - warning
-    ports:
-      - "${INFRA_BIND_ADDRESS:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
-    volumes:
-      - redis-data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 10
-      start_period: 10s
-    networks:
-      - thinkaloud
-    restart: unless-stopped
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "5"
-
+        max-size: 10m
+        max-file: '5'
   datadog-agent:
     image: gcr.io/datadoghq/agent:7
     container_name: thinkaloud-datadog-agent
@@ -131,34 +47,43 @@ services:
       DD_API_KEY: ${DD_API_KEY:?DD_API_KEY is required}
       DD_SITE: ${DD_SITE:-datadoghq.com}
       DD_ENV: ${DD_ENV:-production}
-      DD_APM_ENABLED: "true"
-      DD_APM_NON_LOCAL_TRAFFIC: "true"
-      DD_DOGSTATSD_NON_LOCAL_TRAFFIC: "true"
-      DD_LOGS_ENABLED: "true"
-      DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL: "true"
-      DD_CONTAINER_EXCLUDE_LOGS: "name:thinkaloud-datadog-agent"
-      DD_PROCESS_AGENT_ENABLED: "true"
+      DD_APM_ENABLED: 'true'
+      DD_APM_NON_LOCAL_TRAFFIC: 'true'
+      DD_DOGSTATSD_NON_LOCAL_TRAFFIC: 'true'
+      DD_LOGS_ENABLED: 'true'
+      DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL: 'true'
+      DD_CONTAINER_EXCLUDE_LOGS: name:thinkaloud-datadog-agent
+      DD_PROCESS_AGENT_ENABLED: 'true'
       DD_DOCKER_LABELS_AS_TAGS: '{"com.thinkaloud.service":"service"}'
     ports:
-      - "${INFRA_BIND_ADDRESS:-127.0.0.1}:8126:8126/tcp"
-      - "${INFRA_BIND_ADDRESS:-127.0.0.1}:8125:8125/udp"
+    - ${INFRA_BIND_ADDRESS:-127.0.0.1}:8126:8126/tcp
+    - ${INFRA_BIND_ADDRESS:-127.0.0.1}:8125:8125/udp
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /proc/:/host/proc/:ro
-      - /sys/fs/cgroup/:/host/sys/fs/cgroup:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    - /var/run/docker.sock:/var/run/docker.sock:ro
+    - /proc/:/host/proc/:ro
+    - /sys/fs/cgroup/:/host/sys/fs/cgroup:ro
+    - /var/lib/docker/containers:/var/lib/docker/containers:ro
     networks:
-      - thinkaloud
+    - thinkaloud
     restart: unless-stopped
-
   user-service:
-    <<: *service-defaults
+    init: true
+    networks: *id001
+    restart: unless-stopped
+    logging: *id002
     build:
       context: ./Scalable_User_Service
     container_name: thinkaloud-user-service
-    entrypoint: ["docker/start.sh"]
+    entrypoint:
+    - docker/start.sh
     environment:
-      <<: *common-env
+      DD_AGENT_HOST: datadog-agent
+      DD_TRACE_AGENT_PORT: '8126'
+      DD_DOGSTATSD_PORT: '8125'
+      DD_ENV: ${DD_ENV:-production}
+      DD_VERSION: ${APP_VERSION:-latest}
+      DD_TRACE_ENABLED: ${DD_TRACE_ENABLED:-true}
+      DD_LOGS_INJECTION: ${DD_LOGS_INJECTION:-true}
       DD_SERVICE: user-service
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/user_service
       REDIS_URL: redis://redis:6379/0
@@ -180,20 +105,19 @@ services:
       SQS_EMAIL_QUEUE_URL: ${SQS_EMAIL_QUEUE_URL:-}
       UVICORN_WORKERS: ${USER_SERVICE_WORKERS:-2}
     ports:
-      - "${APP_BIND_ADDRESS:-127.0.0.1}:${USER_SERVICE_PORT:-8000}:8000"
+    - ${APP_BIND_ADDRESS:-127.0.0.1}:${USER_SERVICE_PORT:-8000}:8000
     depends_on:
+      datadog-agent:
+        condition: service_started
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-      datadog-agent:
-        condition: service_started
     healthcheck:
       test:
-        [
-          "CMD-SHELL",
-          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3).read()\""
-        ]
+      - CMD-SHELL
+      - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready',
+        timeout=3).read()"
       interval: 20s
       timeout: 5s
       retries: 6
@@ -203,14 +127,22 @@ services:
       com.datadoghq.tags.service: user-service
       com.datadoghq.tags.env: ${DD_ENV:-production}
       com.datadoghq.ad.logs: '[{"source":"python","service":"user-service"}]'
-
   main-service:
-    <<: *service-defaults
+    init: true
+    networks: *id001
+    restart: unless-stopped
+    logging: *id002
     build:
       context: ./main_service
     container_name: thinkaloud-main-service
     environment:
-      <<: *common-env
+      DD_AGENT_HOST: datadog-agent
+      DD_TRACE_AGENT_PORT: '8126'
+      DD_DOGSTATSD_PORT: '8125'
+      DD_ENV: ${DD_ENV:-production}
+      DD_VERSION: ${APP_VERSION:-latest}
+      DD_TRACE_ENABLED: ${DD_TRACE_ENABLED:-true}
+      DD_LOGS_INJECTION: ${DD_LOGS_INJECTION:-true}
       DD_SERVICE: main-service
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/main_service
       UPSTASH_REDIS_URL: redis://redis:6379/1
@@ -229,22 +161,21 @@ services:
       SPEECHMATICS_API_KEY: ${SPEECHMATICS_API_KEY:-}
       TAVILY_API_KEY: ${TAVILY_API_KEY:-}
     ports:
-      - "${APP_BIND_ADDRESS:-127.0.0.1}:${MAIN_SERVICE_PORT:-8001}:8001"
+    - ${APP_BIND_ADDRESS:-127.0.0.1}:${MAIN_SERVICE_PORT:-8001}:8001
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
       user-service:
         condition: service_healthy
       datadog-agent:
         condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
       test:
-        [
-          "CMD-SHELL",
-          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/', timeout=3).read()\""
-        ]
+      - CMD-SHELL
+      - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/',
+        timeout=3).read()"
       interval: 20s
       timeout: 5s
       retries: 6
@@ -254,15 +185,23 @@ services:
       com.datadoghq.tags.service: main-service
       com.datadoghq.tags.env: ${DD_ENV:-production}
       com.datadoghq.ad.logs: '[{"source":"python","service":"main-service"}]'
-
   ai-interviewer-api:
-    <<: *service-defaults
+    init: true
+    networks: *id001
+    restart: unless-stopped
+    logging: *id002
     build:
       context: ./AI_Interviewer
       target: api
     container_name: thinkaloud-ai-interviewer-api
     environment:
-      <<: *common-env
+      DD_AGENT_HOST: datadog-agent
+      DD_TRACE_AGENT_PORT: '8126'
+      DD_DOGSTATSD_PORT: '8125'
+      DD_ENV: ${DD_ENV:-production}
+      DD_VERSION: ${APP_VERSION:-latest}
+      DD_TRACE_ENABLED: ${DD_TRACE_ENABLED:-true}
+      DD_LOGS_INJECTION: ${DD_LOGS_INJECTION:-true}
       DD_SERVICE: ai-interviewer-api
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/interviewer_service
       REDIS_URL: redis://redis:6379/2
@@ -285,26 +224,25 @@ services:
       LLM_API_KEY: ${LLM_API_KEY:?LLM_API_KEY is required}
       LLM_MODEL: ${LLM_MODEL:-gemini-2.5-flash}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://generativelanguage.googleapis.com/v1beta/openai/}
-      AUTH_BYPASS: "false"
+      AUTH_BYPASS: 'false'
     ports:
-      - "${APP_BIND_ADDRESS:-127.0.0.1}:${AI_INTERVIEWER_API_PORT:-8002}:8000"
+    - ${APP_BIND_ADDRESS:-127.0.0.1}:${AI_INTERVIEWER_API_PORT:-8002}:8000
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
       user-service:
         condition: service_healthy
       main-service:
         condition: service_healthy
       datadog-agent:
         condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
       test:
-        [
-          "CMD-SHELL",
-          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/interview-types', timeout=3).read()\""
-        ]
+      - CMD-SHELL
+      - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/interview-types',
+        timeout=3).read()"
       interval: 20s
       timeout: 5s
       retries: 6
@@ -314,15 +252,23 @@ services:
       com.datadoghq.tags.service: ai-interviewer-api
       com.datadoghq.tags.env: ${DD_ENV:-production}
       com.datadoghq.ad.logs: '[{"source":"python","service":"ai-interviewer-api"}]'
-
   ai-interviewer-worker:
-    <<: *service-defaults
+    init: true
+    networks: *id001
+    restart: unless-stopped
+    logging: *id002
     build:
       context: ./AI_Interviewer
       target: worker
     container_name: thinkaloud-ai-interviewer-worker
     environment:
-      <<: *common-env
+      DD_AGENT_HOST: datadog-agent
+      DD_TRACE_AGENT_PORT: '8126'
+      DD_DOGSTATSD_PORT: '8125'
+      DD_ENV: ${DD_ENV:-production}
+      DD_VERSION: ${APP_VERSION:-latest}
+      DD_TRACE_ENABLED: ${DD_TRACE_ENABLED:-true}
+      DD_LOGS_INJECTION: ${DD_LOGS_INJECTION:-true}
       DD_SERVICE: ai-interviewer-worker
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/interviewer_service
       REDIS_URL: redis://redis:6379/2
@@ -345,25 +291,66 @@ services:
       LLM_API_KEY: ${LLM_API_KEY:?LLM_API_KEY is required}
       LLM_MODEL: ${LLM_MODEL:-gemini-2.5-flash}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://generativelanguage.googleapis.com/v1beta/openai/}
-      AUTH_BYPASS: "false"
+      AUTH_BYPASS: 'false'
     depends_on:
       ai-interviewer-api:
         condition: service_healthy
       datadog-agent:
         condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     labels:
       com.thinkaloud.service: ai-interviewer-worker
       com.datadoghq.tags.service: ai-interviewer-worker
       com.datadoghq.tags.env: ${DD_ENV:-production}
       com.datadoghq.ad.logs: '[{"source":"python","service":"ai-interviewer-worker"}]'
-
+  postgres:
+    image: postgres:16-alpine
+    container_name: thinkaloud-dev-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-thinkaloud}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-thinkaloud_dev}
+    ports:
+    - 127.0.0.1:${POSTGRES_PORT:-5432}:5432
+    volumes:
+    - dev-postgres-data:/var/lib/postgresql/data
+    - ./init-databases.sql:/docker-entrypoint-initdb.d/001-init-databases.sql:ro
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U ${POSTGRES_USER:-thinkaloud}
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+  redis:
+    image: redis:7-alpine
+    container_name: thinkaloud-dev-redis
+    command:
+    - redis-server
+    - --appendonly
+    - 'yes'
+    - --loglevel
+    - warning
+    ports:
+    - 127.0.0.1:${REDIS_PORT:-6379}:6379
+    volumes:
+    - dev-redis-data:/data
+    healthcheck:
+      test:
+      - CMD
+      - redis-cli
+      - ping
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
 networks:
   thinkaloud:
     name: thinkaloud-backend
     driver: bridge
-
 volumes:
-  caddy-data:
-  caddy-config:
-  postgres-data:
-  redis-data:
+  postgres-data: null
+  redis-data: null

@@ -43,20 +43,31 @@ async def load_data():
                         existing_q.python_starter_code = data.get("python_starter_code", existing_q.python_starter_code)
                         existing_q.hints = json.dumps(data.get("hints", []))
                         
-                        test_cases = data.get("test_cases")
-                        if isinstance(test_cases, str):
-                            existing_q.test_cases = test_cases
+                        tc_data = data.get("test_cases")
+                        if isinstance(tc_data, str):
+                            try:
+                                # Validate it's proper JSON
+                                json.loads(tc_data)
+                                existing_q.test_cases = tc_data
+                            except json.JSONDecodeError:
+                                existing_q.test_cases = json.dumps([])
                         else:
-                            existing_q.test_cases = json.dumps(test_cases)
+                            existing_q.test_cases = json.dumps(tc_data if tc_data else [])
                             
                         updated_count += 1
                         logger.info(f"Updated: {title}")
                         q_id = existing_q.id
                     else:
                         # Create new
-                        test_cases = data.get("test_cases")
-                        if not isinstance(test_cases, str):
-                            test_cases = json.dumps(test_cases)
+                        tc_data = data.get("test_cases")
+                        if isinstance(tc_data, str):
+                            try:
+                                json.loads(tc_data)
+                                test_cases_str = tc_data
+                            except json.JSONDecodeError:
+                                test_cases_str = json.dumps([])
+                        else:
+                            test_cases_str = json.dumps(tc_data if tc_data else [])
                             
                         new_q = DSAQuestion(
                             title=title,
@@ -65,7 +76,7 @@ async def load_data():
                             function_name=data.get("function_name", "solution"),
                             python_starter_code=data.get("python_starter_code", ""),
                             hints=json.dumps(data.get("hints", [])),
-                            test_cases=test_cases
+                            test_cases=test_cases_str
                         )
                         db.add(new_q)
                         await db.flush() # flush to get the id

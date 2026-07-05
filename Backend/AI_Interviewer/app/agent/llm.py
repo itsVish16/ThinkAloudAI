@@ -41,30 +41,37 @@ async def call_llm(messages: List[Dict[str, str]], system_prompt: str, stream_qu
     
     start_time = time.time()
     
-    response = await client.chat.completions.create(
-        model=settings.LLM_MODEL,
-        messages=formatted_messages,
-        temperature=0.2,
-        stream=True,
-    )
-    
     full_content = []
     first_token_time = None
     
-    async for chunk in response:
-        if chunk.choices:
-            content = chunk.choices[0].delta.content or ""
-            if content:
-                if first_token_time is None:
-                    first_token_time = time.time()
-                    logger.info("TTFT ms=%.2f", (first_token_time - start_time) * 1000)
+    try:
+        response = await client.chat.completions.create(
+            model=settings.LLM_MODEL,
+            messages=formatted_messages,
+            temperature=0.2,
+            stream=True,
+        )
+        
+        async for chunk in response:
+            if chunk.choices:
+                content = chunk.choices[0].delta.content or ""
+                if content:
+                    if first_token_time is None:
+                        first_token_time = time.time()
+                        logger.info("TTFT ms=%.2f", (first_token_time - start_time) * 1000)
 
-                full_content.append(content)
-                if stream_queue:
-                    await stream_queue.put(content)
-                
-    if stream_queue:
-        await stream_queue.put(None)  # Signal end of stream for the consumer generator
+                    full_content.append(content)
+                    if stream_queue:
+                        await stream_queue.put(content)
+    except Exception as e:
+        logger.error(f"LLM API Error: {e}")
+        error_msg = " I'm sorry, I'm having trouble connecting to my brain right now. "
+        full_content.append(error_msg)
+        if stream_queue:
+            await stream_queue.put(error_msg)
+    finally:
+        if stream_queue:
+            await stream_queue.put(None)  # Signal end of stream for the consumer generator
 
     end_time = time.time()
     logger.info("LLM total generation time ms=%.2f", (end_time - start_time) * 1000)

@@ -78,9 +78,12 @@ class InterviewAgent(Agent):
         if not self.ai_selected_questions:
             self.ai_selected_questions = self.state.get("ai_selected_questions") or []
 
+        self.last_interaction_time = time.time()
+
     async def on_user_turn_completed(self, turn_ctx, new_message):
         import time
         turn_start_time = time.time()
+        self.last_interaction_time = time.time()
         
         user_text = new_message.text_content
         logger.info(f"User finished speaking. Raw text: '{user_text}'")
@@ -137,6 +140,12 @@ class InterviewAgent(Agent):
             print(f"⏱️ [Pipeline] Total Graph/LLM Pipeline Time: {(graph_end_time - turn_start_time) * 1000:.2f} ms")
             
             logger.info(f"Graph execution completed. Next stage: {self.state['stage']}")
+
+            core_stages = ["dsa_core", "system_design_core", "ai_ml_core", "product_sense_core", "technical_assessment"]
+            if self.state["stage"] in core_stages:
+                # Notify frontend that the problem should be revealed
+                payload = json.dumps({"type": "reveal_problem"})
+                await self.room.local_participant.publish_data(payload.encode("utf-8"))
             
             # Prepare state copy without the non-serializable queue for SQLite persistence
             state_to_save = self.state.copy()
@@ -146,6 +155,7 @@ class InterviewAgent(Agent):
                 self.room_id,
                 self.user_id,
                 self.candidate_name,
+                self.interview_type,
                 self.state["stage"],
                 None,
                 state_to_save
@@ -168,6 +178,7 @@ class InterviewAgent(Agent):
             await speech_handle
             
             playback_end_time = time.time()
+            self.last_interaction_time = time.time()
             print(f"⏱️ [Pipeline] Total Turn (incl. TTS playback): {(playback_end_time - turn_start_time) * 1000:.2f} ms")
             print(f"⏱️ [Pipeline] TTS Playback Time (after LLM done): {(playback_end_time - graph_end_time) * 1000:.2f} ms")
 
@@ -256,6 +267,7 @@ async def entrypoint(ctx: agents.JobContext):
             agent.room_id,
             agent.user_id,
             agent.candidate_name,
+            agent.interview_type,
             agent.state["stage"],
             None,
             agent.state
@@ -342,6 +354,9 @@ async def entrypoint(ctx: agents.JobContext):
             if msg_type == "code_update":
                 agent.latest_code = msg.get("code")
                 logger.info("Received candidate code update.")
+            elif msg_type == "design_update":
+                agent.latest_code = msg.get("content")
+                logger.info("Received candidate design update.")
             elif msg_type == "code_execution":
                 agent.latest_execution = msg.get("execution")
                 logger.info(f"Received candidate code execution result.")
@@ -354,8 +369,38 @@ async def entrypoint(ctx: agents.JobContext):
         logger.warning(f"Interview time of {duration_minutes} minutes is up! Disconnecting room.")
         await room.disconnect()
 
+    async def silence_monitor_task(agent_instance, session_instance):
+        while True:
+            await asyncio.sleep(5)
+            # Only trigger in core problem-solving stages
+            core_stages = ["dsa_core", "system_design_core"]
+            if agent_instance.state.get("stage") in core_stages:
+                if time.time() - agent_instance.last_interaction_time > 40:
+                    logger.info("Silence timeout reached (40s). Prompting AI...")
+                    agent_instance.last_interaction_time = time.time()
+                    
+                    # Create a synthetic user message to push the AI
+                    agent_instance.state["messages"].append({
+                        "role": "user",
+                        "content": "[SYSTEM: The candidate has been silent for 40 seconds. If they are writing code, acknowledge it briefly (e.g. 'I see you are coding, keep going'). If they are stuck, ask if they need a hint. Max 1 sentence.]"
+                    })
+                    
+                    try:
+                        updated_state = await agent_instance.interview_agent.ainvoke(agent_instance.state)
+                        agent_instance.state = updated_state
+                        
+                        # Get the last assistant message
+                        assistant_messages = [msg for msg in agent_instance.state["messages"] if msg["role"] == "assistant"]
+                        if assistant_messages:
+                            last_msg = assistant_messages[-1]["content"]
+                            await session_instance.say(last_msg)
+                            
+                    except Exception as e:
+                        logger.error(f"Error in silence monitor task: {e}")
+
     logger.info("Starting AgentSession...")
     asyncio.create_task(interview_timer_task(ctx.room, agent.state["max_duration_minutes"]))
+    asyncio.create_task(silence_monitor_task(agent, session))
     
     await session.start(
         room=ctx.room,
@@ -391,6 +436,7 @@ async def entrypoint(ctx: agents.JobContext):
             agent.room_id,
             agent.user_id,
             agent.candidate_name,
+            agent.interview_type,
             agent.state["stage"],
             None,
             state_to_save
