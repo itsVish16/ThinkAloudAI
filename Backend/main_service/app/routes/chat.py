@@ -276,7 +276,6 @@ async def chat_stream(request: ChatStreamRequest, user_id: str = Depends(get_cur
                                 try:
                                     # Robustly extract ID by fetching the latest roadmap for the user
                                     async with SessionLocal() as db_session:
-                                        from sqlalchemy.future import select
                                         from app.models.roadmap import Roadmap
                                         result = await db_session.execute(
                                             select(Roadmap)
