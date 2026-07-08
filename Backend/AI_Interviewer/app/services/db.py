@@ -92,7 +92,8 @@ async def get_interview_session(session_id: str) -> Optional[Dict[str, Any]]:
                 "strengths": safe_json_load(interview.feedback.strengths),
                 "weaknesses": safe_json_load(interview.feedback.weaknesses),
                 "improvement_plan": safe_json_load(interview.feedback.improvement_plan),
-                "recommended_topics": interview.feedback.recommended_topics
+                "recommended_topics": interview.feedback.recommended_topics,
+                "detailed_metrics": interview.feedback.detailed_metrics
             }
             
         return {
@@ -126,6 +127,7 @@ async def get_all_interviews_for_user(user_id: str) -> List[Dict[str, Any]]:
                     "technical_score": interview.feedback.technical_score,
                     "communication_score": interview.feedback.communication_score,
                     "english_score": interview.feedback.english_score,
+                    "detailed_metrics": interview.feedback.detailed_metrics
                 }
             output.append({
                 "id": interview.id,
