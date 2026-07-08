@@ -70,6 +70,7 @@ class InterviewFeedback(Base):
     weaknesses = Column(Text, nullable=True)
     improvement_plan = Column(Text, nullable=True)
     recommended_topics = Column(JSON, nullable=True)
+    detailed_metrics = Column(JSON, nullable=True)
     
     created_at = Column(DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None))
     

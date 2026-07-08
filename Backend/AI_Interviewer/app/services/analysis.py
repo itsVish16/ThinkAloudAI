@@ -19,6 +19,34 @@ def format_transcript(messages: list) -> str:
         transcript += f"{role}: {msg['content']}\n\n"
     return transcript
 
+def extract_speaking_analytics(messages: list) -> dict:
+    candidate_words = 0
+    ai_words = 0
+    filler_counts = {"umm": 0, "like": 0, "basically": 0}
+    
+    for msg in messages:
+        if msg["role"] == "system": continue
+        
+        words = msg["content"].split()
+        if msg["role"] == "assistant":
+            ai_words += len(words)
+        else:
+            candidate_words += len(words)
+            text_lower = msg["content"].lower()
+            filler_counts["umm"] += len(re.findall(r'\bumm+\b', text_lower))
+            filler_counts["like"] += len(re.findall(r'\blike\b', text_lower))
+            filler_counts["basically"] += len(re.findall(r'\bbasically\b', text_lower))
+            
+    total_words = candidate_words + ai_words
+    candidate_pct = int((candidate_words / total_words * 100)) if total_words > 0 else 0
+    ai_pct = int((ai_words / total_words * 100)) if total_words > 0 else 0
+    
+    return {
+        "candidate_percentage": candidate_pct,
+        "ai_percentage": ai_pct,
+        "filler_words": filler_counts
+    }
+
 import httpx
 from app.config import settings
 
@@ -73,6 +101,15 @@ async def analyze_and_save_interview(session_id: str, user_id: str, candidate_na
             
         data = json.loads(raw_response)
         
+        speaking_analytics = extract_speaking_analytics(messages)
+        detailed_metrics = {
+            "hiring_decision": data.get("hiring_decision", "Borderline"),
+            "executive_summary": data.get("executive_summary", ""),
+            "technical_breakdown": data.get("technical_breakdown", {}),
+            "communication_breakdown": data.get("communication_breakdown", {}),
+            "speaking_analytics": speaking_analytics
+        }
+        
         # Save to DB
         async with AsyncSessionLocal() as db:
             feedback = InterviewFeedback(
@@ -83,7 +120,8 @@ async def analyze_and_save_interview(session_id: str, user_id: str, candidate_na
                 strengths=json.dumps(data.get("strengths", [])),
                 weaknesses=json.dumps(data.get("weaknesses", [])),
                 improvement_plan=json.dumps(data.get("improvement_plan", [])),
-                recommended_topics=data.get("recommended_topics", [])
+                recommended_topics=data.get("recommended_topics", []),
+                detailed_metrics=detailed_metrics
             )
             db.add(feedback)
             await db.commit()

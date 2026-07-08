@@ -146,6 +146,21 @@ You must output a raw JSON object (and ONLY a JSON object) matching the followin
     "technical_score": <int between 0 and 100>,
     "communication_score": <int between 0 and 100>,
     "english_score": <int between 0 and 100>,
+    "hiring_decision": "<enum: Strong Hire, Hire, Borderline, Lean Reject, Reject>",
+    "executive_summary": "<A 3-4 sentence paragraph summarizing the candidate's performance as if written by a Senior Engineering Manager>",
+    "technical_breakdown": {
+        "algorithms": <int 0-100>,
+        "time_complexity": <int 0-100>,
+        "edge_cases": <int 0-100>,
+        "optimization": <int 0-100>,
+        "code_quality": <int 0-100>
+    },
+    "communication_breakdown": {
+        "clarity": <int 0-100>,
+        "confidence": <int 0-100>,
+        "structure": <int 0-100>,
+        "conciseness": <int 0-100>
+    },
     "strengths": ["<highly specific strength 1>", "<highly specific strength 2>"],
     "weaknesses": ["<e.g. used filler words like 'umm'>", "<e.g. did not consider edge case X>"],
     "improvement_plan": ["<actionable step 1>", "<actionable step 2>"],
