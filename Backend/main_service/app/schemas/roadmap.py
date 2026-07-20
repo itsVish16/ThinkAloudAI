@@ -19,6 +19,11 @@ class RoadmapItemOut(RoadmapItemBase):
     class Config:
         from_attributes = True
 
+class ScheduledInterviewOut(RoadmapItemOut):
+    roadmap_title: str
+    topic_title: str
+    roadmap_id: int
+
 class RoadmapTopicBase(BaseModel):
     title: str = Field(..., description="Title of the topic/module")
     order_index: int = Field(default=0, description="Order index of the topic")

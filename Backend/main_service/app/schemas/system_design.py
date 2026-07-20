@@ -19,6 +19,7 @@ class SystemDesignQuestionOut(SystemDesignQuestionBase):
 
 class SystemDesignSubmitRequest(BaseModel):
     answer_text: str
+    image_data: str | None = None
     
 class SystemDesignSubmitResponse(BaseModel):
     score: int

@@ -17,9 +17,9 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    FEATHERLESS_BASE_URL: str = "https://api.featherless.ai/v1"
-    FEATHERLESS_API_KEY: str
-    FEATHERLESS_MODEL: str = "deepseek-ai/DeepSeek-V3-0324"
+    FIREWORKS_BASE_URL: str = "https://api.fireworks.ai/inference/v1"
+    FIREWORKS_API_KEY: str = ""
+    FIREWORKS_MODEL: str = "accounts/fireworks/routers/glm-5p2-fast"
     DATABASE_URL: str
     JWT_SECRET_KEY: str = "replace_me_in_env"
     JWT_ALGORITHM: str = "HS256"

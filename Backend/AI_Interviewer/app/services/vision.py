@@ -14,28 +14,28 @@ _vlm_instance = None
 def get_vlm_service():
     global _vlm_instance
     if _vlm_instance is None:
-        logger.info("Initializing global LocalVLMService instance (now using Featherless API)...")
+        logger.info("Initializing global LocalVLMService instance (now using Fireworks API)...")
         _vlm_instance = LocalVLMService()
     return _vlm_instance
 
 class LocalVLMService:
     def __init__(self):
         """
-        Initializes the VLM service to use Qwen 2.5 VL via Featherless API.
+        Initializes the VLM service to use Qwen via Fireworks API.
         """
-        self.api_key = os.getenv("FEATHERLESS_API_KEY")
+        self.api_key = os.getenv("FIREWORKS_API_KEY")
         if not self.api_key:
-            logger.warning("FEATHERLESS_API_KEY is not set. Vision service will fail.")
+            logger.warning("FIREWORKS_API_KEY is not set. Vision service will fail.")
             
         self.client = AsyncOpenAI(
             api_key=self.api_key,
-            base_url="https://api.featherless.ai/v1"
+            base_url="https://api.fireworks.ai/inference/v1"
         )
-        self.model = "Qwen/Qwen2.5-VL-72B-Instruct"
+        self.model = "accounts/fireworks/models/qwen3p7-plus"
 
     async def analyze_frame(self, frame: rtc.VideoFrame, is_whiteboard=False) -> str:
         """
-        Analyzes a single video frame using Qwen 2.5 VL on Featherless and returns a textual description.
+        Analyzes a single video frame using Qwen on Fireworks and returns a textual description.
         """
         if not self.api_key:
             return "Visual Context: Vision API key not configured."
@@ -57,9 +57,9 @@ class LocalVLMService:
             image.save(buffered, format="JPEG", quality=85)
             img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
             
-            prompt_text = "Describe the candidate's facial expression, focus, and body language in one short sentence."
+            prompt_text = "Analyze the candidate's facial expression, focus, body language, and overall behavior in detail. Describe exactly what they are doing."
             if is_whiteboard:
-                prompt_text = "Analyze this system architecture diagram. If the whiteboard is blank or mostly empty, say 'The whiteboard is currently blank.' Otherwise, strictly describe ONLY the components, text, and data flows that are visibly drawn. Do NOT hallucinate or assume standard architecture components."
+                prompt_text = "Analyze the content of the shared screen or whiteboard in detail. Extract all text, components, data flows, or code visible on the screen. Describe the visual layout and any diagrams."
 
             response = await self.client.chat.completions.create(
                 model=self.model,
@@ -87,5 +87,5 @@ class LocalVLMService:
             return response.choices[0].message.content.strip()
 
         except Exception as e:
-            logger.error(f"Error processing video frame via Featherless API: {e}")
+            logger.error(f"Error processing video frame via Fireworks API: {e}")
             return "Visual Context: Failed to process frame."

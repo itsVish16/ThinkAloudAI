@@ -2,6 +2,7 @@ import json
 import httpx
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, HTTPException, Depends
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -9,9 +10,11 @@ from starlette.requests import Request
 from contextlib import asynccontextmanager
 
 from app.services.livekit_api import generate_livekit_token
-from app.services.db import get_interview_session, save_interview_session, init_db
+from app.routers import admin
+from app.services.events import redis_client
 from app.services.auth import get_current_user
 from app.services.analysis import analyze_and_save_interview
+from app.services.db import get_interview_session, save_interview_session, init_db
 import asyncio
 from app.config import settings
 
@@ -36,6 +39,8 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+app.include_router(admin.router)
+
 # --- Pydantic Schemas ---
 
 class TokenRequest(BaseModel):
@@ -58,6 +63,7 @@ class InterviewDetailResponse(BaseModel):
     candidate_name: str = Field(..., description="Candidate's name")
     transcript: List[Dict[str, Any]] = Field([], description="Full transcript of the conversation")
     evaluation: Optional[Dict[str, Any]] = Field(None, description="Scores and feedback if the interview is completed")
+    created_at: str = Field(..., description="ISO timestamp of interview creation")
     updated_at: str = Field(..., description="ISO timestamp of last activity")
 
 class InterviewTypeItem(BaseModel):
@@ -139,7 +145,24 @@ async def get_token(
     username = current_user.get("username", "Candidate")
     user_id = current_user.get("user_id", "guest_user")
 
+    # Normalize interview_type for AI/ML variants
+    if payload.interview_type in ["ml-engineer-infra", "agentic-ai-engineer"]:
+        payload.interview_type = "ai_ml"
+
     import random
+    
+    # Handle dynamic DSA questions passed via interview_type (e.g. "dsa:1,2")
+    if payload.interview_type.startswith("dsa:"):
+        parts = payload.interview_type.split(":", 1)
+        if len(parts) > 1 and parts[1]:
+            # Merge with existing question_ids if any
+            extracted_ids = [id_str.strip() for id_str in parts[1].split(",") if id_str.strip()]
+            if payload.question_ids:
+                payload.question_ids.extend(extracted_ids)
+            else:
+                payload.question_ids = extracted_ids
+        payload.interview_type = "dsa"
+        
     ai_selected_questions = []
     try:
         async with httpx.AsyncClient() as client:
@@ -166,16 +189,29 @@ async def get_token(
                         ai_selected_questions = [q for q in sd_pool if str(q["id"]) in payload.question_ids or q.get("id") in payload.question_ids]
                     else:
                         ai_selected_questions = random.sample(sd_pool, min(1, len(sd_pool)))
+            elif payload.interview_type == "behavioral":
+                response = await client.get(f"{settings.MAIN_SERVICE_URL}/behavioral/questions?limit=2")
+                if response.status_code == 200:
+                    ai_selected_questions = response.json()
+            elif payload.interview_type == "product_management" or payload.interview_type == "pm":
+                response = await client.get(f"{settings.MAIN_SERVICE_URL}/pm/questions?limit=2")
+                if response.status_code == 200:
+                    ai_selected_questions = response.json()
+            elif payload.interview_type in ["ai_ml", "ml-engineer-infra", "agentic-ai-engineer"]:
+                response = await client.get(f"{settings.MAIN_SERVICE_URL}/aiml/questions?limit=2")
+                if response.status_code == 200:
+                    ai_selected_questions = response.json()
     except Exception as e:
         print(f"Error fetching questions: {e}")
 
     # Generate room JWT embedding candidate metadata (LiveKit might truncate this, so we ALSO save to DB)
+    # We DO NOT embed ai_selected_questions because they can easily exceed LiveKit's 1024-byte metadata limit
     token = generate_livekit_token(
         identity=username, 
         room_name=payload.room_name, 
         user_id=user_id,
         interview_type=payload.interview_type,
-        ai_selected_questions=ai_selected_questions
+        ai_selected_questions=[] # Pass empty to avoid token truncation
     )
 
     import time
@@ -247,10 +283,49 @@ async def get_interview_details(
         "room_name": session["id"],
         "stage": session["stage"],
         "candidate_name": session["candidate_name"],
-        "transcript": session["state_data"].get("messages", []),
+        "transcript": session.get("state_data", {}).get("messages", []) if session.get("state_data") else [],
         "evaluation": session.get("feedback"),
+        "created_at": session["created_at"],
         "updated_at": session["updated_at"]
     }
+
+@app.get(
+    "/api/interview/{room_name}/stream",
+    summary="SSE for Interview Status",
+    description="Streams real-time updates for an interview session.",
+)
+async def stream_interview_status(
+    room_name: str,
+    current_user: dict = Depends(get_current_user)
+):
+    from app.services.events import redis_client
+    
+    session = await get_interview_session(room_name)
+    if not session:
+        raise HTTPException(status_code=404, detail="Interview Session not found")
+    if session["user_id"] != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="Forbidden: You do not own this interview")
+    
+    async def event_generator():
+        pubsub = redis_client.pubsub()
+        await pubsub.subscribe("interview_events")
+        try:
+            while True:
+                message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                if message:
+                    try:
+                        data = json.loads(message["data"])
+                        if data.get("event") == "InterviewCompleted" and data.get("data", {}).get("interview_id") == room_name:
+                            yield f"data: {json.dumps(data)}\n\n"
+                            break
+                    except json.JSONDecodeError:
+                        pass
+                yield ": keep-alive\n\n"
+                await asyncio.sleep(1)
+        finally:
+            await pubsub.unsubscribe("interview_events")
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 from app.services.db import get_all_interviews_for_user
 
@@ -293,16 +368,20 @@ async def force_end_interview(
         )
         
         # Trigger background analysis
-        messages = session["state_data"].get("messages", [])
-        asyncio.create_task(
-            analyze_and_save_interview(
-                session_id=session["id"],
-                user_id=session["user_id"],
-                candidate_name=session["candidate_name"],
-                interview_type=session.get("interview_type") or "Behavioral",
-                messages=messages
-            )
-        )
+        state_data = session.get("state_data") or {}
+        messages = state_data.get("messages", [])
+        opik_trace_id = state_data.get("opik_trace_id", session["id"])
+        
+        from app.services.rabbitmq import publish_analysis_task
+        payload = {
+            "session_id": session["id"],
+            "user_id": session["user_id"],
+            "candidate_name": session["candidate_name"],
+            "interview_type": session.get("interview_type") or "Behavioral",
+            "messages": messages,
+            "opik_trace_id": opik_trace_id
+        }
+        asyncio.create_task(publish_analysis_task(payload))
     
     return {"status": "success", "message": "Interview marked as completed and analysis triggered"}
 
@@ -314,3 +393,49 @@ async def force_end_interview(
 async def list_my_interviews(current_user: dict = Depends(get_current_user)):
     user_id = current_user["user_id"]
     return await get_all_interviews_for_user(user_id)
+
+from app.services.db import get_user_analytics
+
+@app.get(
+    "/api/interviews/me/analytics",
+    summary="User Interview Analytics",
+    description="Fetches aggregated interview statistics for the logged-in user to populate the dashboard."
+)
+async def my_interview_analytics(current_user: dict = Depends(get_current_user)):
+    user_id = current_user["user_id"]
+    return await get_user_analytics(user_id)
+
+@app.get(
+    "/api/leaderboard",
+    summary="Live Global Leaderboard",
+    description="Fetches the top 10 users globally by their cumulative score."
+)
+async def get_leaderboard(current_user: dict = Depends(get_current_user)):
+    from app.services.events import redis_client
+    # Fetch top 10 from sorted set
+    top_users = await redis_client.zrevrange("global_leaderboard", 0, 9, withscores=True)
+    
+    leaderboard = []
+    for i, (name, score) in enumerate(top_users):
+        leaderboard.append({
+            "rank": i + 1,
+            "candidate_name": name,
+            "score": int(score)
+        })
+        
+    username = current_user.get("username", "Candidate")
+    
+    # Get current user's rank
+    user_rank = await redis_client.zrevrank("global_leaderboard", username)
+    user_score = await redis_client.zscore("global_leaderboard", username)
+    
+    my_rank = {
+        "rank": user_rank + 1 if user_rank is not None else None,
+        "candidate_name": username,
+        "score": int(user_score) if user_score is not None else 0
+    }
+    
+    return {
+        "leaderboard": leaderboard,
+        "me": my_rank
+    }

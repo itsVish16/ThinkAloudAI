@@ -14,6 +14,7 @@ def verify_jwt(credentials: HTTPAuthorizationCredentials = Depends(security)) ->
     try:
         # Decode the token using the secret key and algorithm specified in settings
         payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        payload["raw_token"] = token
         return payload
     except jwt.ExpiredSignatureError:
         raise HTTPException(

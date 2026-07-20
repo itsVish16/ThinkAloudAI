@@ -23,6 +23,7 @@ dependencies = [
     "ddtrace>=2.19.0",
     "uvloop>=0.22.1",
     "aioboto3>=15.5.0",
+    "aio-pika>=9.4.1",
 ]
 
 [dependency-groups]

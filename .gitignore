@@ -97,3 +97,16 @@ test_api.py
 temp_q.json
 update_compose.py
 temp/
+update_env_compose.py
+
+# Global test scripts and data
+test_*.py
+*test*.py
+*.csv
+sol
+*.cpp
+bugs.md
+BUGS_AND_ISSUES.md
+.agents/
+alter_db.py
+inject_*.py

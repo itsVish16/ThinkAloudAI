@@ -50,7 +50,7 @@ async def generate_response(state: InterviewState):
     full_prompt = f"{INTERVIEW_PERSONA}\n\n{stage_prompt}\n{code_ctx}{exec_ctx}\n[CONVERSATION MEMORY (Do not repeat yourself)]:\n{memory_text}"
     
     # Fast streaming call to TTS
-    resp = await call_llm(state["messages"], full_prompt, state.get("stream_queue"))
+    resp = await call_llm(state["messages"], full_prompt, state.get("stream_queue"), opik_trace_id=state.get("opik_trace_id"))
     
     new_messages = state["messages"] + [{"role": "assistant", "content": resp}]
     return {
@@ -81,11 +81,20 @@ INTERVIEW_FLOWS = {
         "wrap_up",
         "completed"
     ],
-    "behavioral": [
+    "hr": [
         "intro_audio_check",
         "intro_agenda",
         "intro_candidate",
         "behavioral_star",
+        "candidate_qa",
+        "wrap_up",
+        "completed"
+    ],
+    "pm": [
+        "intro_audio_check",
+        "intro_agenda",
+        "intro_candidate",
+        "product_sense_core",
         "candidate_qa",
         "wrap_up",
         "completed"
@@ -116,7 +125,7 @@ async def evaluate_and_route(state: InterviewState):
     eval_prompt = EVALUATION_PROMPT.format(stage=current_stage, stage_rule=stage_rule)
     
     # Evaluate the conversation
-    eval_result = await evaluate_llm(state["messages"], eval_prompt)
+    eval_result = await evaluate_llm(state["messages"], eval_prompt, opik_trace_id=state.get("opik_trace_id"))
     
     # Append the evaluation to our state
     evals = state.get("evaluations", [])

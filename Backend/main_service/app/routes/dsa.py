@@ -19,8 +19,13 @@ async def get_median_debug(db: AsyncSession = Depends(get_db)):
     return {"raw": "not found"}
 
 
-def get_current_user_id() -> str:
-    return "test_user_id"
+from app.auth import verify_jwt
+
+def get_current_user_id(payload: dict = Depends(verify_jwt)) -> str:
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Invalid token payload: 'sub' missing")
+    return user_id
 
 from redis.asyncio import Redis
 import json
@@ -59,7 +64,11 @@ async def get_question(question_id: int, db: AsyncSession = Depends(get_db)):
     return question
 
 @router.post("/questions", response_model=DSAQuestionOut)
-async def create_question(request: DSAQuestionCreate, db: AsyncSession = Depends(get_db)):
+async def create_question(
+    request: DSAQuestionCreate, 
+    db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis)
+):
     new_question = DSAQuestion(
         title=request.title,
         description=request.description,
@@ -71,6 +80,12 @@ async def create_question(request: DSAQuestionCreate, db: AsyncSession = Depends
     db.add(new_question)
     await db.commit()
     await db.refresh(new_question)
+    
+    try:
+        await redis.delete("dsa:questions:all")
+    except Exception:
+        pass
+        
     return new_question
 
 @router.get("/questions/{question_id}/submission", response_model=Optional[CodeSubmissionOut])
@@ -92,7 +107,12 @@ async def get_latest_submission(
     return result.scalars().first()
 
 @router.post("/questions/{question_id}/run", response_model=CodeSubmitResponse)
-async def run_solution(question_id: int, request: CodeSubmitRequest, db: AsyncSession = Depends(get_db)):
+async def run_solution(
+    question_id: int, 
+    request: CodeSubmitRequest, 
+    db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis)
+):
     result = await db.execute(select(DSAQuestion).filter(DSAQuestion.id == question_id))
     question = result.scalars().first()
     if not question:
@@ -100,8 +120,10 @@ async def run_solution(question_id: int, request: CodeSubmitRequest, db: AsyncSe
         
     from app.services.docker_runner import run_code_in_docker
     
-    # Ideally run_code_in_docker would be async, running it synchronously for now
-    docker_result = run_code_in_docker(
+    import asyncio
+    # Run the synchronous E2B blocking call in a separate thread pool
+    docker_result = await asyncio.to_thread(
+        run_code_in_docker,
         code=request.code,
         function_name=question.function_name,
         test_cases_json=question.test_cases,
@@ -121,10 +143,32 @@ async def run_solution(question_id: int, request: CodeSubmitRequest, db: AsyncSe
     db.add(submission)
     await db.commit()
     
+    # Invalidate profile cache
+    try:
+        from app.models.user_replica import UserProfileReplica
+        replica_res = await db.execute(
+            select(UserProfileReplica).filter(UserProfileReplica.id == request.session_id)
+        )
+        replica = replica_res.scalars().first()
+        
+        await redis.delete(f"users:profile:{request.session_id}")
+        if replica:
+            await redis.delete(f"users:profile:{replica.id}")
+            if replica.email:
+                await redis.delete(f"users:profile:{replica.email}")
+    except Exception:
+        pass
+        
     return CodeSubmitResponse(**docker_result)
 
 @router.post("/questions/{question_id}/submit", response_model=CodeSubmitResponse)
-async def submit_solution(question_id: int, request: CodeSubmitRequest, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+async def submit_solution(
+    question_id: int, 
+    request: CodeSubmitRequest, 
+    background_tasks: BackgroundTasks, 
+    db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis)
+):
     result = await db.execute(select(DSAQuestion).filter(DSAQuestion.id == question_id))
     question = result.scalars().first()
     if not question:
@@ -132,7 +176,9 @@ async def submit_solution(question_id: int, request: CodeSubmitRequest, backgrou
         
     from app.services.docker_runner import run_code_in_docker
     
-    docker_result = run_code_in_docker(
+    import asyncio
+    docker_result = await asyncio.to_thread(
+        run_code_in_docker,
         code=request.code,
         function_name=question.function_name,
         test_cases_json=question.test_cases,
@@ -152,6 +198,22 @@ async def submit_solution(question_id: int, request: CodeSubmitRequest, backgrou
     db.add(submission)
     await db.commit()
     
+    # Invalidate profile cache
+    try:
+        from app.models.user_replica import UserProfileReplica
+        replica_res = await db.execute(
+            select(UserProfileReplica).filter(UserProfileReplica.id == request.session_id)
+        )
+        replica = replica_res.scalars().first()
+        
+        await redis.delete(f"users:profile:{request.session_id}")
+        if replica:
+            await redis.delete(f"users:profile:{replica.id}")
+            if replica.email:
+                await redis.delete(f"users:profile:{replica.email}")
+    except Exception:
+        pass
+    
     if docker_result["status"] == "Accepted":
         from app.services.event_bus import publish_event
         from app.models.user_replica import UserProfileReplica
@@ -160,7 +222,13 @@ async def submit_solution(question_id: int, request: CodeSubmitRequest, backgrou
             select(UserProfileReplica).filter(UserProfileReplica.id == request.session_id)
         )
         replica = replica_result.scalars().first()
-        resolved_user_id = int(replica.id) if replica else None
+        
+        if replica:
+            resolved_user_id = int(replica.id)
+        elif request.session_id.isdigit():
+            resolved_user_id = int(request.session_id)
+        else:
+            resolved_user_id = None
         
         async def fire_event():
             try:

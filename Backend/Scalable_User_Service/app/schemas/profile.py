@@ -88,6 +88,30 @@ class FullUserProfileResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+class PublicUserProfileResponse(BaseModel):
+    username: str
+    full_name: str
+    is_verified: bool
+    created_at: datetime
+
+    bio: str | None = None
+    avatar_url: str | None = None
+    github_url: str | None = None
+    linkedin_url: str | None = None
+    headline: str | None = None
+    location: str | None = None
+    institution: str | None = None
+    preferred_language: str | None = None
+    resume_url: str | None = None
+
+    stats: UserStatsResponse
+    heatmap: list[DailyActivityResponse] = []
+    skills: list[SkillResponse] = []
+    achievements: list[AchievementResponse] = []
+    recent_activity: list[LearningEventResponse] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
 class UpdateProfileDetailsRequest(BaseModel):
     bio: str | None = None
     avatar_url: str | None = None

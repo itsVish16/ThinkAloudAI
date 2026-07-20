@@ -21,6 +21,9 @@ async def get_current_user(request: Request) -> dict:
         }
     auth_header = request.headers.get("Authorization")
     if not auth_header:
+        # Fallback to query param (useful for SSE/WebSockets)
+        auth_header = request.query_params.get("token")
+    if not auth_header:
         # Fallback to alternative common header names
         auth_header = request.headers.get("token") or request.headers.get("x-access-token")
         
@@ -67,7 +70,8 @@ async def get_current_user(request: Request) -> dict:
             "email": payload.get("email", "unknown@domain.com"),
             "username": payload.get("username", "user"),
             "full_name": payload.get("full_name", "User"),
-            "is_verified": payload.get("is_verified", True)
+            "is_verified": payload.get("is_verified", True),
+            "raw_token": token
         }
     except jwt.ExpiredSignatureError:
         raise HTTPException(

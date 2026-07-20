@@ -1,7 +1,6 @@
 import json
 import asyncio
 import logging
-from app.services.event_bus import redis_client
 from app.database import SessionLocal
 from app.models.user_replica import UserProfileReplica
 

@@ -40,10 +40,11 @@ import json
 from sqlalchemy.future import select
 
 @tool
-async def get_dsa_questions(question_id: Optional[int] = None) -> str:
+async def get_dsa_questions(question_id: Optional[int] = None, keyword: Optional[str] = None) -> str:
     """Use this tool to fetch DSA questions from the database. 
     If question_id is provided, returns details of that specific question (including description and test cases).
-    If question_id is None, returns a list of all available questions (IDs and Titles)."""
+    If keyword is provided, searches for questions whose title or description contains the keyword (e.g., 'Array', 'Sorting', 'Binary Search').
+    If neither is provided, returns a small random selection of available questions."""
     async with SessionLocal() as db:
         try:
             if question_id:
@@ -53,11 +54,14 @@ async def get_dsa_questions(question_id: Optional[int] = None) -> str:
                     return f"Title: {q.title}\nDifficulty: {q.difficulty}\nFunction Name: {q.function_name}\nDescription: {q.description}\nTest Cases: {q.test_cases}"
                 return "Question not found."
             else:
-                result = await db.execute(select(DSAQuestion))
+                query = select(DSAQuestion)
+                if keyword:
+                    query = query.filter(DSAQuestion.title.ilike(f"%{keyword}%") | DSAQuestion.description.ilike(f"%{keyword}%"))
+                result = await db.execute(query.limit(20))
                 qs = result.scalars().all()
                 if not qs:
-                    return "No questions available."
-                res = "Available DSA Questions:\n"
+                    return f"No questions available for keyword '{keyword}'." if keyword else "No questions available."
+                res = f"Available DSA Questions{' for ' + keyword if keyword else ''} (Showing up to 20):\n"
                 for q in qs:
                     res += f"- ID: {q.id}, Title: {q.title}, Difficulty: {q.difficulty}\n"
                 return res
@@ -81,11 +85,15 @@ async def get_user_submissions(session_id: str) -> str:
         except Exception as e:
             return f"Error fetching submissions: {str(e)}"
 
+from langchain_core.runnables import RunnableConfig
+
+from typing import List, Dict, Any
+
 @tool
-async def create_user_roadmap(title: str, description: str, topics: str) -> str:
+async def create_user_roadmap(title: str, description: str, topics: List[Dict[str, Any]], config: RunnableConfig) -> str:
     """Use this tool to generate a detailed, multi-topic learning roadmap for the user based on their needs.
     'title' is the roadmap title. 'description' is a short summary.
-    'topics' MUST be a JSON-encoded string representing a list of topics.
+    'topics' is a list of topic objects.
     Example topics format:
     [
       {
@@ -93,21 +101,19 @@ async def create_user_roadmap(title: str, description: str, topics: str) -> str:
         "order_index": 0,
         "items": [
           {"title": "Two Sum", "content_type": "dsa", "content_id": "1", "timeline_days": 1},
-          {"title": "Array Basics Mock Interview", "content_type": "mock_interview", "content_id": "dsa", "timeline_days": 1},
+          {"title": "Array Basics Mock Interview", "content_type": "mock_interview", "content_id": "dsa:1,2", "timeline_days": 1},
           {"title": "Read about HashMaps", "content_type": "custom", "content_id": null, "timeline_days": 2}
         ]
       }
     ]
     """
+    user_id = config.get("configurable", {}).get("user_id", "test_user_id")
     async with SessionLocal() as db:
         try:
-            if isinstance(topics, str):
-                topics_data = json.loads(topics)
-            else:
-                topics_data = topics
+            topics_data = topics
             
             roadmap = Roadmap(
-                user_id="test_user_id", # Hardcoded for now to match API route
+                user_id=user_id,
                 title=title,
                 description=description
             )
@@ -134,19 +140,22 @@ async def create_user_roadmap(title: str, description: str, topics: str) -> str:
                     )
                     db.add(item)
                     
+            roadmap_id = roadmap.id
             await db.commit()
-            return f"Successfully created roadmap '{title}' with ID {roadmap.id}."
+            return f"Successfully created roadmap '{title}' with ID {roadmap_id}."
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             await db.rollback()
             return f"Error creating roadmap: {e}"
 
 tools = [get_current_time, web_search, get_dsa_questions, get_user_submissions, create_user_roadmap]
 
-# Initialize LLM using Featherless base URL and API key
+# Initialize LLM using Fireworks base URL and API key
 llm = ChatOpenAI(
-    model=os.environ.get("FEATHERLESS_MODEL", "meta-llama/Meta-Llama-3-70B-Instruct"),
-    base_url="https://api.featherless.ai/v1",
-    api_key=os.environ.get("FEATHERLESS_API_KEY"),
+    model=settings.FIREWORKS_MODEL,
+    base_url=settings.FIREWORKS_BASE_URL,
+    api_key=settings.FIREWORKS_API_KEY,
     max_tokens=2048,
     temperature=0.4
 )
@@ -166,7 +175,7 @@ system_prompt = (
     "5. Be encouraging, professional, and precise. Use markdown formatting to make your answers structured and readable.\n"
     "6. You have real-time tools: 'get_current_time', 'web_search', 'get_dsa_questions', 'get_user_submissions', and 'create_user_roadmap'.\n"
     "7. If the user asks for a study plan or roadmap, use the 'create_user_roadmap' tool to generate a structured timeline for them.\n"
-    "8. IMPORTANT: If the user asks to 'schedule an interview' or 'set up a mock interview' (e.g. for Arrays), DO NOT conduct the interview in text. Instead, use the 'create_user_roadmap' tool to create a single-item roadmap with content_type='mock_interview' and content_id matching their requested topic (e.g., 'dsa' or specific question IDs like '1,2'). This will spawn a real WebRTC video interview for them!\n"
+    "8. IMPORTANT: If the user asks to 'schedule an interview' or 'set up a mock interview' (e.g. for Arrays), DO NOT conduct the interview in text. Instead, use the 'create_user_roadmap' tool to create a single-item roadmap with content_type='mock_interview'. For the content_id, explicitly specify the exact DSA question IDs you want to ask in the interview by prefixing them with 'dsa:' (e.g. 'dsa:1,2' to ask questions 1 and 2). Ensure you tell the user that the AI interviewer will jump straight into the coding problems without asking for their background/projects!\n"
     "9. Before providing your final answer to the user, you MUST ALWAYS think step-by-step and place all your internal reasoning inside <think> ... </think> tags. Once you close the </think> tag, output your final response."
 )
 

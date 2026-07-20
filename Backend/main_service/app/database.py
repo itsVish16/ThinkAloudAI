@@ -34,12 +34,11 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 import redis.asyncio as redis_async
 
+# Create a shared Redis client with a connection pool
+redis_client = redis_async.from_url(settings.UPSTASH_REDIS_URL, decode_responses=True)
+
 async def get_redis():
     """
-    FastAPI dependency that yields a Redis client.
+    FastAPI dependency that yields a shared Redis client.
     """
-    redis = redis_async.from_url(settings.UPSTASH_REDIS_URL, decode_responses=True)
-    try:
-        yield redis
-    finally:
-        await redis.aclose()
+    yield redis_client

@@ -31,8 +31,7 @@ except Exception:  # opik not installed / not configured
     logger.warning("Opik tracing disabled — OPIK_API_KEY not set or opik not installed.")
 
 
-@_track(name="interview_call_llm", type="llm")
-async def call_llm(messages: List[Dict[str, str]], system_prompt: str, stream_queue: asyncio.Queue = None) -> str:
+async def call_llm(messages: List[Dict[str, str]], system_prompt: str, stream_queue: asyncio.Queue = None, opik_trace_id: str = None) -> str:
     """
     Queries the configured LLM endpoint with streaming, pushing tokens
     into the provided queue for real-time TTS generation.
@@ -44,11 +43,20 @@ async def call_llm(messages: List[Dict[str, str]], system_prompt: str, stream_qu
     full_content = []
     first_token_time = None
     
+    span = None
+    try:
+        import opik
+        if opik_trace_id:
+            trace = opik.Trace(id=opik_trace_id)
+            span = trace.span(name="interview_call_llm", type="llm", input={"messages": messages, "system_prompt": system_prompt})
+    except Exception:
+        pass
+        
     try:
         response = await client.chat.completions.create(
             model=settings.LLM_MODEL,
             messages=formatted_messages,
-            temperature=0.2,
+            temperature=0.4,
             stream=True,
         )
         
@@ -72,14 +80,16 @@ async def call_llm(messages: List[Dict[str, str]], system_prompt: str, stream_qu
     finally:
         if stream_queue:
             await stream_queue.put(None)  # Signal end of stream for the consumer generator
+            
+        if span:
+            span.end(output={"output": "".join(full_content)})
 
     end_time = time.time()
     logger.info("LLM total generation time ms=%.2f", (end_time - start_time) * 1000)
 
     return "".join(full_content)
 
-@_track(name="interview_evaluate_llm", type="llm")
-async def evaluate_llm(messages: List[Dict[str, str]], system_prompt: str) -> Any:
+async def evaluate_llm(messages: List[Dict[str, str]], system_prompt: str, opik_trace_id: str = None) -> Any:
     """
     Non-streaming LLM call for background evaluation. Returns a parsed EvaluationResult.
     """
@@ -92,25 +102,42 @@ async def evaluate_llm(messages: List[Dict[str, str]], system_prompt: str) -> An
     schema_str = EvaluationResult.model_json_schema()
     formatted_messages[0]["content"] += f"\n\nJSON SCHEMA:\n{json.dumps(schema_str, indent=2)}"
     
+    span = None
+    try:
+        import opik
+        if opik_trace_id:
+            trace = opik.Trace(id=opik_trace_id)
+            span = trace.span(name="interview_evaluate_llm", type="llm", input={"messages": messages, "system_prompt": system_prompt})
+    except Exception:
+        pass
+        
     start_time = time.time()
     response = await client.chat.completions.create(
         model=settings.LLM_MODEL,
         messages=formatted_messages,
-        temperature=0.1,
+        temperature=0.0,
         response_format={"type": "json_object"}
     )
+    
     end_time = time.time()
-    logger.info("Evaluator generation time ms=%.2f", (end_time - start_time) * 1000)
-
-    content = response.choices[0].message.content
+    logger.info("Evaluation generation time ms=%.2f", (end_time - start_time) * 1000)
+    
+    raw_json = response.choices[0].message.content
     try:
-        return EvaluationResult.model_validate_json(content)
+        result = EvaluationResult.model_validate_json(raw_json)
+        if span:
+            span.end(output={"raw_json": raw_json, "parsed": result.model_dump()})
+        return result
     except Exception as e:
-        logger.warning("Evaluator JSON parse failed, falling back to defaults: %s", e)
-        # Fallback
-        return EvaluationResult(
+        logger.error(f"Failed to parse EvaluationResult: {e}")
+        # Return a safe fallback
+        fallback = EvaluationResult(
+            reasoning=f"Parse Error: {e}",
             score=0,
-            feedback="Parse error",
+            feedback="",
             objective_met=False,
-            next_stage=None
+            trigger_next_question=False
         )
+        if span:
+            span.end(output={"error": str(e)})
+        return fallback

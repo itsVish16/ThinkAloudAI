@@ -73,35 +73,143 @@ async def get_code_submissions(session_id: str) -> str:
         logger.error(f"Failed to fetch code submissions: {e}")
         return "Failed to fetch code submissions."
 
-@_track(name="post_interview_analysis", type="llm")
-async def analyze_and_save_interview(session_id: str, user_id: str, candidate_name: str, interview_type: str, messages: list):
+async def analyze_and_save_interview(session_id: str, user_id: str, candidate_name: str, interview_type: str, messages: list, opik_trace_id: str = None):
     """
     Background task to analyze transcript, generate feedback, save to DB, and publish event.
     """
     logger.info(f"Starting post-interview analysis for session {session_id}")
     
+    # Explicit Opik span tracking to keep it in the same thread
+    span = None
+    try:
+        import opik
+        if opik_trace_id:
+            trace = opik.Trace(id=opik_trace_id)
+            span = trace.span(name="post_interview_analysis", type="llm")
+    except Exception:
+        pass
+        
     transcript = format_transcript(messages)
     code_subs_text = await get_code_submissions(session_id)
     
+    if interview_type.lower() == "system_design":
+        schema_str = """{{
+        "requirements_gathering": <int 0-100>,
+        "high_level_architecture": <int 0-100>,
+        "scalability_and_capacity": <int 0-100>,
+        "trade_off_reasoning": <int 0-100>,
+        "communication": <int 0-100>
+    }}"""
+    elif interview_type.lower() == "behavioral":
+        schema_str = """{{
+        "star_structure": <int 0-100>,
+        "specificity": <int 0-100>,
+        "ownership_and_impact": <int 0-100>,
+        "clarity": <int 0-100>,
+        "conciseness": <int 0-100>
+    }}"""
+    elif interview_type.lower() in ["ai_ml", "ml-engineer-infra", "agentic-ai-engineer"]:
+        schema_str = """{{
+        "ml_fundamentals": <int 0-100>,
+        "model_selection": <int 0-100>,
+        "data_processing": <int 0-100>,
+        "system_architecture": <int 0-100>,
+        "communication": <int 0-100>
+    }}"""
+    else:
+        schema_str = """{{
+        "algorithms": <int 0-100>,
+        "time_complexity": <int 0-100>,
+        "edge_cases": <int 0-100>,
+        "optimization": <int 0-100>,
+        "code_quality": <int 0-100>
+    }}"""
+
     prompt = POST_INTERVIEW_ANALYSIS_PROMPT.format(
         interview_type=interview_type,
         transcript=transcript,
-        code_submissions=code_subs_text
+        code_submissions=code_subs_text,
+        technical_breakdown_schema=schema_str
     )
     
-    eval_messages = []
+    # Send the massive prompt as a user message instead of a system prompt to avoid truncation
+    eval_messages = [{"role": "user", "content": prompt}]
+    system_prompt = "You are an expert AI Interview Evaluator."
     
-    try:
-        raw_response = await call_llm(eval_messages, prompt)
-        
-        # Resilient JSON extraction
-        json_match = re.search(r'\{.*\}', raw_response.replace('\n', ' '), re.DOTALL)
-        if json_match:
-            raw_response = json_match.group(0)
+    # Check transcript quality
+    speaking_analytics = extract_speaking_analytics(messages)
+    candidate_words = speaking_analytics.get("candidate_percentage", 0) * (len(transcript.split()) / 100.0)
+    
+    if len(messages) < 6 or candidate_words < 30:
+        logger.warning(f"Transcript for {session_id} is too short or candidate spoke too little. Skipping deep analysis.")
+        try:
+            async with AsyncSessionLocal() as db:
+                feedback = InterviewFeedback(
+                    session_id=session_id,
+                    technical_score=0,
+                    communication_score=0,
+                    english_score=0,
+                    strengths=json.dumps(["Not enough data"]),
+                    weaknesses=json.dumps(["Not enough data"]),
+                    improvement_plan=json.dumps(["Complete a full interview session"]),
+                    recommended_topics=[],
+                    detailed_metrics={
+                        "hiring_decision": "Reject",
+                        "executive_summary": "The interview ended too early or the candidate did not speak enough to perform a meaningful evaluation.",
+                        "speaking_analytics": speaking_analytics
+                    }
+                )
+                db.add(feedback)
+                await db.commit()
             
-        data = json.loads(raw_response)
-        
-        speaking_analytics = extract_speaking_analytics(messages)
+            await publish_interview_completed(
+                session_id=session_id, user_id=user_id, candidate_name=candidate_name, domain=interview_type,
+                overall_score=0, interview_type=interview_type,
+                technical_score=0, communication_score=0, english_score=0,
+            )
+        except Exception as e:
+            logger.error(f"Error saving short transcript fallback for {session_id}: {e}")
+        finally:
+            if span:
+                try: span.end(output={"status": "skipped_too_short"})
+                except Exception: pass
+        return
+
+    MAX_RETRIES = 3
+    data = None
+    
+    for attempt in range(MAX_RETRIES):
+        try:
+            raw_response = await call_llm(eval_messages, system_prompt, opik_trace_id=opik_trace_id)
+            
+            # Resilient JSON extraction
+            json_match = re.search(r'\{.*\}', raw_response.replace('\n', ' '), re.DOTALL)
+            if json_match:
+                raw_response = json_match.group(0)
+                
+            data = json.loads(raw_response)
+            break # Success, exit retry loop
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"Attempt {attempt+1} - Failed to decode LLM JSON response for session {session_id}: {e}")
+            if attempt == MAX_RETRIES - 1:
+                logger.error(f"Max retries reached. Raw Output: {raw_response}")
+                raise e
+            await asyncio.sleep(2 ** attempt) # Exponential backoff
+        except Exception as e:
+            logger.error(f"Attempt {attempt+1} - LLM call failed: {e}")
+            if attempt == MAX_RETRIES - 1:
+                raise e
+            await asyncio.sleep(2 ** attempt)
+            
+    if not data:
+        logger.error(f"Analysis failed to produce valid data after {MAX_RETRIES} attempts for session {session_id}")
+        if span:
+            try: span.end(output={"status": "failed_no_data"})
+            except Exception: pass
+        return
+
+    try:
         detailed_metrics = {
             "hiring_decision": data.get("hiring_decision", "Borderline"),
             "executive_summary": data.get("executive_summary", ""),
@@ -134,6 +242,7 @@ async def analyze_and_save_interview(session_id: str, user_id: str, candidate_na
         await publish_interview_completed(
             session_id=session_id,
             user_id=user_id,
+            candidate_name=candidate_name,
             domain=interview_type,
             overall_score=overall_score,
             interview_type=interview_type,
@@ -142,7 +251,12 @@ async def analyze_and_save_interview(session_id: str, user_id: str, candidate_na
             english_score=data.get("english_score"),
         )
         
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to decode LLM JSON response for session {session_id}: {e}\nRaw Output: {raw_response}")
     except Exception as e:
         logger.error(f"Failed to analyze and save interview for session {session_id}: {e}")
+
+    if span:
+        try:
+            span.end(output={"status": "completed"})
+        except Exception:
+            pass
+

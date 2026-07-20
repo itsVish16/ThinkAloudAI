@@ -188,43 +188,60 @@ async def handle_interview_completed(data: dict):
         logger.info("processed_interview_completed", user_id=user_id, domain=domain)
 
 
+import os
+import aio_pika
+
+RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/")
+
+async def process_rabbitmq_message(message: aio_pika.IncomingMessage):
+    async with message.process(requeue=True):
+        try:
+            payload = json.loads(message.body.decode())
+            event_type = payload.get("event")
+            data = payload.get("data", {})
+
+            if event_type == "ProblemSolved":
+                await handle_problem_solved(data)
+            elif event_type == "InterviewCompleted":
+                await handle_interview_completed(data)
+            else:
+                logger.debug("ignored_unknown_event", event_type=event_type)
+
+        except Exception as e:
+            logger.error("error_processing_event", error=str(e))
+            raise
+
 async def event_consumer_loop():
-    """Background task that continuously listens to Redis Pub/Sub with infinite retry."""
-    logger.info("event_consumer_starting", channels=[MAIN_EVENTS_CHANNEL, INTERVIEW_EVENTS_CHANNEL])
+    """Background task that continuously listens to RabbitMQ with infinite retry."""
+    logger.info("event_consumer_starting", backend="RabbitMQ")
 
     retry_delay = 1
     max_delay = 60
 
     while True:
         try:
-            redis: Redis = await get_redis()
-            pubsub = redis.pubsub()
-            
-            try:
-                await pubsub.subscribe(MAIN_EVENTS_CHANNEL, INTERVIEW_EVENTS_CHANNEL)
-                logger.info("event_consumer_connected")
-    
+            connection = await aio_pika.connect_robust(RABBITMQ_URL)
+            async with connection:
+                channel = await connection.channel()
+                await channel.set_qos(prefetch_count=10)
+                
+                # Main Events
+                main_exchange = await channel.declare_exchange("main_events_exchange", aio_pika.ExchangeType.FANOUT, durable=True)
+                main_queue = await channel.declare_queue("user_service_main_events_queue", durable=True)
+                await main_queue.bind(main_exchange)
+                
+                # Interview Events
+                int_exchange = await channel.declare_exchange("interview_events_exchange", aio_pika.ExchangeType.FANOUT, durable=True)
+                int_queue = await channel.declare_queue("user_service_interview_events_queue", durable=True)
+                await int_queue.bind(int_exchange)
+                
+                logger.info("event_consumer_connected_rabbitmq")
                 retry_delay = 1
-    
-                async for message in pubsub.listen():
-                    if message["type"] == "message":
-                        try:
-                            payload = json.loads(message["data"])
-                            event_type = payload.get("event")
-                            data = payload.get("data", {})
-    
-                            if event_type == "ProblemSolved":
-                                await handle_problem_solved(data)
-                            elif event_type == "InterviewCompleted":
-                                await handle_interview_completed(data)
-                            else:
-                                logger.debug("ignored_unknown_event", event_type=event_type)
-    
-                        except Exception as e:
-                            logger.error("error_processing_event", error=str(e), message=message)
-            finally:
-                with contextlib.suppress(Exception):
-                    await pubsub.close()
+
+                await main_queue.consume(process_rabbitmq_message)
+                await int_queue.consume(process_rabbitmq_message)
+                
+                await asyncio.Future() # Run forever
                     
         except asyncio.CancelledError:
             logger.info("event_consumer_stopped")

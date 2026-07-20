@@ -14,6 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.user import router as user_router
+from app.api.v1.admin import router as admin_router
 from app.config import settings
 from app.core.logging import configure_logging
 from app.core.rate_limit import limiter
@@ -76,7 +77,7 @@ app.add_middleware(
 )
 
 app.include_router(user_router, prefix="/api/v1")
-
+app.include_router(admin_router, prefix="/api/v1/users")
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):

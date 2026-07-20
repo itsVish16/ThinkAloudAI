@@ -19,5 +19,7 @@ class UserProfileResponse(BaseModel):
     total_submissions: int
     total_solved: int
     accuracy_percentage: float
+    current_streak: int = 0
+    max_streak: int = 0
     heatmap: List[HeatmapData]
     recent_submissions: List[SubmissionSummary]

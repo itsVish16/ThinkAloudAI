@@ -35,9 +35,13 @@ RUN uv run python -c "from livekit.plugins import silero; silero.VAD.load()"
 # ddtrace-run enables Datadog APM auto-instrumentation of every endpoint.
 FROM base AS api
 EXPOSE 8000
-CMD ["uv", "run", "ddtrace-run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uv run ddtrace-run uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS:-4} --proxy-headers --forwarded-allow-ips='*'"]
 
 # Target for Voice Worker
 # The LiveKit worker is also traced via ddtrace-run (background tasks + LLM calls).
 FROM base AS worker
 CMD ["uv", "run", "ddtrace-run", "python", "-m", "app.worker", "start"]
+
+# Target for Background Analysis Worker
+FROM base AS analysis_worker
+CMD ["uv", "run", "ddtrace-run", "python", "-m", "app.analysis_worker"]

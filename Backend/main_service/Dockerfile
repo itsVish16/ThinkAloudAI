@@ -28,4 +28,5 @@ EXPOSE 8001
 
 # Run via ddtrace-run so every FastAPI endpoint / httpx / redis call is auto-traced
 # by Datadog APM. DD_AGENT_HOST / DD_SERVICE / DD_ENV are set in docker-compose.yml.
-CMD ["uv", "run", "ddtrace-run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]
+# We use sh -c to expand environment variables like UVICORN_WORKERS.
+CMD ["sh", "-c", "uv run ddtrace-run uvicorn app.main:app --host 0.0.0.0 --port 8001 --workers ${UVICORN_WORKERS:-4} --proxy-headers --forwarded-allow-ips='*'"]

@@ -1,4 +1,4 @@
-api.thinkaloudai.tech {
+http://localhost, api.thinkaloudai.tech {
     encode gzip
 
     # User Service specific routes

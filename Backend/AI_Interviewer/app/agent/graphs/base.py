@@ -1,7 +1,8 @@
 from app.agent.state import InterviewState
-from app.agent.prompts import STAGE_PROMPTS, EVALUATION_PROMPT, EVALUATOR_RULES
-from app.agent.llm import call_llm, evaluate_llm
+from app.agent.prompts import STAGE_PROMPTS, TTS_RULES
+from app.agent.llm import call_llm
 import time
+from datetime import datetime
 
 async def generate_response(state: InterviewState):
     """
@@ -15,11 +16,9 @@ async def generate_response(state: InterviewState):
     elapsed_minutes = int((time.time() - start_time) / 60)
     max_duration = state.get("max_duration_minutes", 60)
     time_warning = ""
-    if elapsed_minutes >= max_duration - 10:
-        time_warning = "WARNING: You only have a few minutes left. Keep questions extremely brief and move towards wrap up."
+    if elapsed_minutes >= max_duration - 5:
+        time_warning = "WARNING: You are out of time. End the interview gracefully in this turn."
         
-    from datetime import datetime
-    
     remaining_minutes = max_duration - elapsed_minutes
     current_date = datetime.now().strftime("%B %d, %Y")
 
@@ -27,68 +26,68 @@ async def generate_response(state: InterviewState):
     questions = state.get("ai_selected_questions", [])
     active_q = questions[active_idx] if active_idx < len(questions) else None
 
+    # Format interview_type to make AI greeting more natural
+    i_type_raw = state.get("interview_type", "General")
+    if "system_design" in i_type_raw.lower() or "sd" in i_type_raw.lower():
+        formatted_type = "System Design"
+    elif "dsa" in i_type_raw.lower() or "swe" in i_type_raw.lower():
+        formatted_type = "Data Structures and Algorithms"
+    elif "pm" in i_type_raw.lower() or "product" in i_type_raw.lower():
+        formatted_type = "Product Management"
+    elif "hr" in i_type_raw.lower() or "behavioral" in i_type_raw.lower():
+        formatted_type = "Behavioral"
+    elif "ai" in i_type_raw.lower() or "ml" in i_type_raw.lower():
+        formatted_type = "AI and Machine Learning"
+    else:
+        formatted_type = i_type_raw.replace("_", " ").title()
+
     prompt = prompt.format(
         elapsed_minutes=elapsed_minutes,
         max_duration_minutes=max_duration,
         remaining_minutes=remaining_minutes,
         current_date=current_date,
         time_warning=time_warning,
-        interview_type=state.get("interview_type", "General"),
-        ai_selected_questions=questions,
-        current_active_question=active_q,
-        latest_code=state.get("latest_code", "None yet"),
-        latest_execution=state.get("latest_execution", "None yet"),
-        latest_whiteboard_context=state.get("latest_whiteboard_context", "No visual data yet")
+        interview_type=formatted_type,
+        current_active_question=active_q
     )
 
+    from app.agent.prompts import INTERVIEW_PERSONA
+    
+    # Smarter context injection
+    extra_context = ""
+    
+    # Only inject code context during coding stages
+    if current_stage in ["dsa_coding", "dsa_testing"]:
+        code = state.get("latest_code", "")
+        exec_out = state.get("latest_execution", "")
+        if code:
+            extra_context += f"\n\nIDE CONTEXT:\n<CANDIDATE_CODE>\n{code}\n</CANDIDATE_CODE>"
+        if exec_out:
+            extra_context += f"\n<EXECUTION_OUTPUT>\n{exec_out}\n</EXECUTION_OUTPUT>"
+            
+    # Only inject visual context during design/whiteboarding stages
+    if "system_design" in current_stage:
+        whiteboard = state.get("latest_whiteboard_context", "")
+        if whiteboard and "Visual Context:" not in whiteboard:
+            extra_context += f"\n\nWHITEBOARD VISUAL OBSERVATION:\n{whiteboard}"
+
+    full_system_prompt = f"{INTERVIEW_PERSONA}\n\n{TTS_RULES}\n\n{prompt}{extra_context}"
+    
+    # Adaptive message window
+    # Intros don't need much history. Coding needs more.
+    if current_stage.startswith("intro_"):
+        window_size = 6
+    elif current_stage == "wrap_up":
+        window_size = 4
+    else:
+        window_size = 10
+        
+    recent_messages = state["messages"][-window_size:]
     
     # Fast streaming call to TTS
-    resp = await call_llm(state["messages"], prompt, state.get("stream_queue"))
+    resp = await call_llm(recent_messages, full_system_prompt, state.get("stream_queue"), opik_trace_id=state.get("opik_trace_id"))
     
     new_messages = state["messages"] + [{"role": "assistant", "content": resp}]
     return {
         "messages": new_messages
-    }
-
-async def evaluate_and_route(state: InterviewState):
-    """
-    The Manager Node. Evaluates the conversation *after* the speaker has replied.
-    Updates the stage and logs evaluations. Runs in background while TTS is playing.
-    """
-    current_stage = state["stage"]
-    
-    # If we are already done, just exit
-    if current_stage == "completed":
-        return {}
-        
-    # Build evaluation prompt with current stage context
-    stage_rule = EVALUATOR_RULES.get(current_stage, "Advance when objective is met.")
-    eval_prompt = EVALUATION_PROMPT.format(stage=current_stage, stage_rule=stage_rule)
-    
-    # Evaluate the conversation
-    eval_result = await evaluate_llm(state["messages"], eval_prompt)
-    
-    # Append the evaluation to our state
-    evals = state.get("evaluations", [])
-    eval_dict = eval_result.model_dump()
-    evals.append(eval_dict)
-    
-    # Default to current stage
-    next_stage = current_stage
-    
-    # Check time constraints
-    start_time = state.get("start_time", time.time())
-    elapsed_minutes = int((time.time() - start_time) / 60)
-    max_duration = state.get("max_duration_minutes", 60)
-    
-    # Time forced transition
-    if elapsed_minutes >= max_duration:
-        next_stage = "wrap_up"
-    # Normal transition if objective met
-    elif eval_result.objective_met and eval_result.next_stage:
-        next_stage = eval_result.next_stage.value
-        
-    return {
-        "evaluations": evals,
-        "stage": next_stage
     }

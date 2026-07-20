@@ -83,7 +83,11 @@ async def get_question(question_id: int, db: AsyncSession = Depends(get_db)):
     return question
 
 @router.post("/questions", response_model=SystemDesignQuestionOut)
-async def create_question(request: SystemDesignQuestionCreate, db: AsyncSession = Depends(get_db)):
+async def create_question(
+    request: SystemDesignQuestionCreate, 
+    db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis)
+):
     """
     Create a new System Design question.
     """
@@ -94,17 +98,24 @@ async def create_question(request: SystemDesignQuestionCreate, db: AsyncSession 
     db.add(new_question)
     await db.commit()
     await db.refresh(new_question)
+    
+    try:
+        keys = await redis.keys("system_design:questions:all:*")
+        if keys:
+            await redis.delete(*keys)
+    except Exception:
+        pass
+        
     return new_question
 
 from app.schemas.system_design import SystemDesignSubmitRequest, SystemDesignSubmitResponse
 import os
 
 
-async def evaluate_system_design(question_title: str, question_description: str, answer: str) -> SystemDesignSubmitResponse:
+async def evaluate_system_design(question_title: str, question_description: str, answer: str, image_data: str | None = None) -> SystemDesignSubmitResponse:
     """
-    Evaluates a system-design submission with the configured Featherless LLM,
-    traced via Opik. Falls back to a neutral evaluation on any error so the
-    endpoint never 500s purely because the LLM is unavailable.
+    Evaluates a system-design submission with the configured LLM,
+    traced via Opik. Falls back to a neutral evaluation on any error.
     """
     from langchain_openai import ChatOpenAI
     try:
@@ -118,10 +129,14 @@ async def evaluate_system_design(question_title: str, question_description: str,
     except Exception:
         callbacks = []
 
+    model_name = settings.FIREWORKS_MODEL
+    if image_data:
+        model_name = "accounts/fireworks/models/llama-v3p2-11b-vision-instruct"
+
     llm = ChatOpenAI(
-        model=os.environ.get("FEATHERLESS_MODEL", "meta-llama/Meta-Llama-3-70B-Instruct"),
-        base_url=settings.FEATHERLESS_BASE_URL,
-        api_key=settings.FEATHERLESS_API_KEY,
+        model=model_name,
+        base_url=settings.FIREWORKS_BASE_URL,
+        api_key=settings.FIREWORKS_API_KEY,
         temperature=0.2,
         model_kwargs={"response_format": {"type": "json_object"}},
     )
@@ -132,14 +147,19 @@ async def evaluate_system_design(question_title: str, question_description: str,
         "strengths (array of strings), improvements (array of strings). "
         "Be specific and actionable."
     )
-    user_prompt = (
-        f"Question: {question_title}\n\nContext: {question_description}\n\n"
-        f"Candidate's design:\n{answer}"
-    )
+    
+    content_list = [
+        {"type": "text", "text": f"Question: {question_title}\n\nContext: {question_description}\n\nCandidate's text answer:\n{answer}"}
+    ]
+    if image_data:
+        content_list.append({
+            "type": "image_url",
+            "image_url": {"url": image_data}
+        })
 
     try:
         result = await llm.ainvoke(
-            [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)],
+            [SystemMessage(content=system_prompt), HumanMessage(content=content_list)],
             config={"callbacks": callbacks, "tags": ["system_design_evaluation"]},
         )
         data = json.loads(result.content)
@@ -170,4 +190,4 @@ async def submit_system_design(question_id: int, request: SystemDesignSubmitRequ
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
 
-    return await evaluate_system_design(question.title, question.description, request.answer_text)
+    return await evaluate_system_design(question.title, question.description, request.answer_text, request.image_data)

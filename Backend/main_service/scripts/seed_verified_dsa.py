@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import delete
+from sqlalchemy import delete, text
 
 import sys
 import os
@@ -19,12 +19,19 @@ async def init_db():
         await conn.run_sync(Base.metadata.create_all)
 
 async def seed_verified_problems():
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.ext.asyncio import AsyncSession
+    from app.database import DATABASE_URL
+    local_engine = create_async_engine(DATABASE_URL)
+    LocalSession = sessionmaker(local_engine, class_=AsyncSession, expire_on_commit=False)
+    
     logger.info("Dropping all existing low-quality DSA questions and Code Submissions...")
     
-    async with SessionLocal() as session:
+    async with LocalSession() as session:
         # Cascade manually by deleting submissions first
-        await session.execute(delete(CodeSubmission))
-        await session.execute(delete(DSAQuestion))
+        await session.execute(text("TRUNCATE TABLE submissions RESTART IDENTITY CASCADE"))
+        await session.execute(text("TRUNCATE TABLE dsa_questions RESTART IDENTITY CASCADE"))
         
         # 1. Two Sum
         two_sum = DSAQuestion(
@@ -69,6 +76,7 @@ public:
 #include <string>
 #include <unordered_map>
 #include <sstream>
+#include <algorithm>
 
 using namespace std;
 
@@ -79,33 +87,46 @@ vector<int> parseVector(const string& s) {
     string temp = s;
     temp.erase(remove(temp.begin(), temp.end(), '['), temp.end());
     temp.erase(remove(temp.begin(), temp.end(), ']'), temp.end());
+    temp.erase(remove(temp.begin(), temp.end(), ' '), temp.end());
     stringstream ss(temp);
     string item;
     while(getline(ss, item, ',')) {
-        res.push_back(stoi(item));
+        if(!item.empty()) res.push_back(stoi(item));
     }
     return res;
 }
 
-int main(int argc, char* argv[]) {
-    if (argc < 3) return 1;
-    vector<int> nums = parseVector(argv[1]);
-    int target = stoi(argv[2]);
+int main() {
+    string nums_str;
+    if (!getline(cin, nums_str)) return 0;
+    vector<int> nums = parseVector(nums_str);
+    int target;
+    if (!(cin >> target)) return 0;
+    
     Solution sol;
     vector<int> res = sol.twoSum(nums, target);
     cout << "[";
     for(size_t i=0; i<res.size(); ++i) {
-        cout << res[i] << (i==res.size()-1 ? "" : ", ");
+        cout << res[i] << (i==res.size()-1 ? "" : ","); // No space for deterministic output
     }
     cout << "]" << endl;
     return 0;
 }
 """,
-            test_cases=json.dumps([
-                {"input": "[2,7,11,15] 9", "output": "[0, 1]"},
-                {"input": "[3,2,4] 6", "output": "[1, 2]"},
-                {"input": "[3,3] 6", "output": "[0, 1]"}
-            ]),
+            test_cases=json.dumps({
+                "function_name": "twoSum",
+                "params": [
+                    {"name": "nums", "type": "int[]"},
+                    {"name": "target", "type": "int"}
+                ],
+                "return_type": "int[]",
+                "comparison": "unordered",
+                "cases": [
+                    {"args": {"nums": [2, 7, 11, 15], "target": 9}, "expected": [0, 1]},
+                    {"args": {"nums": [3, 2, 4], "target": 6}, "expected": [1, 2]},
+                    {"args": {"nums": [3, 3], "target": 6}, "expected": [0, 1]}
+                ]
+            }),
             hints=json.dumps([
                 "A really brute force way would be to search for all possible pairs of numbers but that would be too slow.",
                 "Can you use a hash map to keep track of the elements you have seen so far?"
@@ -164,22 +185,30 @@ using namespace std;
 
 {{user_code}}
 
-int main(int argc, char* argv[]) {
-    if (argc < 2) return 1;
-    string s = argv[1];
+int main() {
+    string s;
+    if (!getline(cin, s)) return 0;
     Solution sol;
     bool res = sol.isValid(s);
     cout << (res ? "true" : "false") << endl;
     return 0;
 }
 """,
-            test_cases=json.dumps([
-                {"input": "()", "output": "true"},
-                {"input": "()[]{}", "output": "true"},
-                {"input": "(]", "output": "false"},
-                {"input": "([)]", "output": "false"},
-                {"input": "{[]}", "output": "true"}
-            ]),
+            test_cases=json.dumps({
+                "function_name": "isValid",
+                "params": [
+                    {"name": "s", "type": "string"}
+                ],
+                "return_type": "boolean",
+                "comparison": "exact",
+                "cases": [
+                    {"args": {"s": "()"}, "expected": True},
+                    {"args": {"s": "()[]{}"}, "expected": True},
+                    {"args": {"s": "(]"}, "expected": False},
+                    {"args": {"s": "([)]"}, "expected": False},
+                    {"args": {"s": "{[]}"}, "expected": True}
+                ]
+            }),
             hints=json.dumps([
                 "Use a stack data structure to keep track of open brackets.",
                 "When you see a close bracket, check if it matches the top of the stack."
@@ -236,22 +265,29 @@ using namespace std;
 
 {{user_code}}
 
-int main(int argc, char* argv[]) {
-    // Handling empty string arg
-    string s = "";
-    if (argc >= 2) s = argv[1];
+int main() {
+    string s;
+    getline(cin, s); // Allows empty string
     Solution sol;
     int res = sol.lengthOfLongestSubstring(s);
     cout << res << endl;
     return 0;
 }
 """,
-            test_cases=json.dumps([
-                {"input": "abcabcbb", "output": "3"},
-                {"input": "bbbbb", "output": "1"},
-                {"input": "pwwkew", "output": "3"},
-                {"input": "", "output": "0"}
-            ]),
+            test_cases=json.dumps({
+                "function_name": "lengthOfLongestSubstring",
+                "params": [
+                    {"name": "s", "type": "string"}
+                ],
+                "return_type": "int",
+                "comparison": "exact",
+                "cases": [
+                    {"args": {"s": "abcabcbb"}, "expected": 3},
+                    {"args": {"s": "bbbbb"}, "expected": 1},
+                    {"args": {"s": "pwwkew"}, "expected": 3},
+                    {"args": {"s": ""}, "expected": 0}
+                ]
+            }),
             hints=json.dumps([
                 "Can you optimize the brute force approach using a sliding window?",
                 "Keep a hash set to store the characters in the current window [i, j)."
@@ -307,21 +343,29 @@ using namespace std;
 
 {{user_code}}
 
-int main(int argc, char* argv[]) {
-    if (argc < 2) return 1;
-    int n = stoi(argv[1]);
+int main() {
+    int n;
+    if (!(cin >> n)) return 0;
     Solution sol;
     int res = sol.climbStairs(n);
     cout << res << endl;
     return 0;
 }
 """,
-            test_cases=json.dumps([
-                {"input": "2", "output": "2"},
-                {"input": "3", "output": "3"},
-                {"input": "4", "output": "5"},
-                {"input": "10", "output": "89"}
-            ]),
+            test_cases=json.dumps({
+                "function_name": "climbStairs",
+                "params": [
+                    {"name": "n", "type": "int"}
+                ],
+                "return_type": "int",
+                "comparison": "exact",
+                "cases": [
+                    {"args": {"n": 2}, "expected": 2},
+                    {"args": {"n": 3}, "expected": 3},
+                    {"args": {"n": 4}, "expected": 5},
+                    {"args": {"n": 10}, "expected": 89}
+                ]
+            }),
             hints=json.dumps([
                 "To reach nth step, what could have been your previous steps?",
                 "You could have reached n from n-1 or n-2. Thus DP[n] = DP[n-1] + DP[n-2]."

@@ -25,4 +25,5 @@ dependencies = [
     "greenlet>=3.0.3",
     "alembic>=1.18.4",
     "opik>=2.0.73",
+    "aio-pika>=9.4.1",
 ]

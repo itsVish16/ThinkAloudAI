@@ -23,9 +23,9 @@ async def generate_chat_title(session_id: str, first_message: str):
     try:
         import os
         llm = ChatOpenAI(
-            model="llama-3.3-70b-versatile",
-            base_url="https://api.aimlapi.com/v1",
-            api_key=os.environ.get("AIML_API_KEY", os.environ.get("OPENAI_API_KEY", "missing_key")),
+            model=settings.FIREWORKS_MODEL,
+            base_url=settings.FIREWORKS_BASE_URL,
+            api_key=settings.FIREWORKS_API_KEY,
             temperature=0.3
         )
         messages = [
@@ -48,8 +48,13 @@ async def generate_chat_title(session_id: str, first_message: str):
         logging.error(f"Error generating chat title: {e}")
         return None
 
-def get_current_user_id() -> str:
-    return "test_user_id"
+from app.auth import verify_jwt
+
+def get_current_user_id(payload: dict = Depends(verify_jwt)) -> str:
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Invalid token payload: 'sub' missing")
+    return user_id
 
 @router.post("/chat/stream")
 async def chat_stream(request: ChatStreamRequest, user_id: str = Depends(get_current_user_id), redis_client = Depends(get_redis)):
@@ -94,6 +99,10 @@ async def chat_stream(request: ChatStreamRequest, user_id: str = Depends(get_cur
                 
                 history = []
                 for msg in db_messages:
+                    # Skip custom UI messages that LangChain cannot coerce
+                    if msg.role not in ["human", "user", "ai", "assistant", "system", "tool", "function", "developer"]:
+                        continue
+                        
                     try:
                         parsed_content = json.loads(msg.content)
                         if isinstance(parsed_content, list):
@@ -191,7 +200,7 @@ async def chat_stream(request: ChatStreamRequest, user_id: str = Depends(get_cur
                 async for event in agent_executor.astream_events(
                     inputs, 
                     version="v2",
-                    config={"configurable": {"thread_id": session_id}, "callbacks": [opik_tracer]}
+                    config={"configurable": {"thread_id": session_id, "user_id": user_id}, "callbacks": [opik_tracer]}
                 ):
                     kind = event["event"]
                     name = event["name"]
@@ -279,7 +288,7 @@ async def chat_stream(request: ChatStreamRequest, user_id: str = Depends(get_cur
                                         from app.models.roadmap import Roadmap
                                         result = await db_session.execute(
                                             select(Roadmap)
-                                            .filter(Roadmap.user_id == "test_user_id") # Match hardcoded user_id in tool
+                                            .filter(Roadmap.user_id == user_id)
                                             .order_by(Roadmap.created_at.desc())
                                         )
                                         latest_roadmap = result.scalars().first()
@@ -289,6 +298,7 @@ async def chat_stream(request: ChatStreamRequest, user_id: str = Depends(get_cur
                                                 "role": "roadmap",
                                                 "content": str(latest_roadmap.id)
                                             }))
+                                            yield f"data: {json.dumps({'type': 'roadmap', 'id': str(latest_roadmap.id)})}\n\n"
                                 except Exception as e:
                                     logger.error(f"Error buffering roadmap: {e}")
                                     
@@ -346,23 +356,27 @@ async def get_session_messages(session_id: str, db: AsyncSession = Depends(get_d
     db_msgs = list(msg_result.scalars().all())
     
     # Merge with Redis buffer
+    from datetime import datetime, UTC
+    dummy_id = 999999
     raw_buffer = await redis_client.lrange("chat:buffer", 0, -1)
     for raw in raw_buffer:
         try:
             msg_data = json.loads(raw)
             if msg_data.get("session_id") == session_id:
                 db_msgs.append(ChatMessageModel(
-                    id=999999, # Dummy ID for frontend sorting
+                    id=dummy_id, # Dummy ID for frontend sorting
                     session_id=session_id,
                     role=msg_data["role"],
-                    content=msg_data["content"]
+                    content=msg_data["content"],
+                    created_at=datetime.now(UTC)
                 ))
+                dummy_id += 1
         except json.JSONDecodeError:
             pass
     return db_msgs
 
 @router.get("/debug/messages")
-async def debug_messages(db: AsyncSession = Depends(get_db)):
+async def debug_messages(db: AsyncSession = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     result = await db.execute(select(ChatMessageModel).order_by(ChatMessageModel.id.desc()).limit(20))
     msgs = result.scalars().all()
     return [{"id": m.id, "session_id": m.session_id, "role": m.role, "content": m.content[:100]} for m in msgs]

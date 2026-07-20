@@ -79,34 +79,8 @@ services:
     container_name: thinkaloud-user-service
     entrypoint:
     - docker/start.sh
-    environment:
-      DD_AGENT_HOST: datadog-agent
-      DD_TRACE_AGENT_PORT: '8126'
-      DD_DOGSTATSD_PORT: '8125'
-      DD_ENV: ${DD_ENV:-production}
-      DD_VERSION: ${APP_VERSION:-latest}
-      DD_TRACE_ENABLED: ${DD_TRACE_ENABLED:-true}
-      DD_LOGS_INJECTION: ${DD_LOGS_INJECTION:-true}
-      DD_SERVICE: user-service
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/user_service
-      REDIS_URL: redis://redis:6379/0
-      DEBUG: ${USER_SERVICE_DEBUG:-false}
-      SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
-      ALGORITHM: ${JWT_ALGORITHM:-HS256}
-      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
-      REFRESH_TOKEN_EXPIRE_MINUTES: ${REFRESH_TOKEN_EXPIRE_MINUTES:-10080}
-      ENABLE_RATE_LIMITING: ${ENABLE_RATE_LIMITING:-true}
-      RATE_LIMIT_TRUST_PROXY_HEADERS: ${RATE_LIMIT_TRUST_PROXY_HEADERS:-true}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS is required}
-      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:?FRONTEND_BASE_URL is required}
-      EMAIL_DELIVERY_ENABLED: ${EMAIL_DELIVERY_ENABLED:-false}
-      RESEND_API_KEY: ${RESEND_API_KEY:-}
-      EMAIL_FROM: ${EMAIL_FROM:-noreply@example.com}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
-      AWS_REGION: ${AWS_REGION:-us-east-1}
-      SQS_EMAIL_QUEUE_URL: ${SQS_EMAIL_QUEUE_URL:-}
-      UVICORN_WORKERS: ${USER_SERVICE_WORKERS:-2}
+    env_file:
+      - ./Scalable_User_Service/.env
     ports:
     - ${APP_BIND_ADDRESS:-127.0.0.1}:${USER_SERVICE_PORT:-8000}:8000
     depends_on:
@@ -138,31 +112,8 @@ services:
     build:
       context: ./main_service
     container_name: thinkaloud-main-service
-    environment:
-      DD_AGENT_HOST: datadog-agent
-      DD_TRACE_AGENT_PORT: '8126'
-      DD_DOGSTATSD_PORT: '8125'
-      DD_ENV: ${DD_ENV:-production}
-      DD_VERSION: ${APP_VERSION:-latest}
-      DD_TRACE_ENABLED: ${DD_TRACE_ENABLED:-true}
-      DD_LOGS_INJECTION: ${DD_LOGS_INJECTION:-true}
-      DD_SERVICE: main-service
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/main_service
-      UPSTASH_REDIS_URL: redis://redis:6379/1
-      USER_SERVICE_URL: http://user-service:8000
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS is required}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
-      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
-      FEATHERLESS_BASE_URL: ${FEATHERLESS_BASE_URL:-https://api.featherless.ai/v1}
-      FEATHERLESS_API_KEY: ${FEATHERLESS_API_KEY:?FEATHERLESS_API_KEY is required}
-      FEATHERLESS_MODEL: ${FEATHERLESS_MODEL:-deepseek-ai/DeepSeek-V3-0324}
-      AIML_API_KEY: ${AIML_API_KEY:-}
-      E2B_API_KEY: ${E2B_API_KEY:-}
-      OPIK_API_KEY: ${OPIK_API_KEY:-}
-      OPIK_WORKSPACE: ${OPIK_WORKSPACE:-default}
-      OPIK_PROJECT_NAME: ${OPIK_PROJECT_NAME:-ThinkAloud.ai}
-      SPEECHMATICS_API_KEY: ${SPEECHMATICS_API_KEY:-}
-      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+    env_file:
+      - ./main_service/.env
     ports:
     - ${APP_BIND_ADDRESS:-127.0.0.1}:${MAIN_SERVICE_PORT:-8001}:8001
     depends_on:
@@ -173,6 +124,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     healthcheck:
       test:
@@ -197,37 +150,10 @@ services:
       context: ./AI_Interviewer
       target: api
     container_name: thinkaloud-ai-interviewer-api
+    env_file:
+      - ./AI_Interviewer/.env
     environment:
-      DD_AGENT_HOST: datadog-agent
-      DD_TRACE_AGENT_PORT: '8126'
-      DD_DOGSTATSD_PORT: '8125'
-      DD_ENV: ${DD_ENV:-production}
-      DD_VERSION: ${APP_VERSION:-latest}
-      DD_TRACE_ENABLED: ${DD_TRACE_ENABLED:-true}
-      DD_LOGS_INJECTION: ${DD_LOGS_INJECTION:-true}
       DD_SERVICE: ai-interviewer-api
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/interviewer_service
-      REDIS_URL: redis://redis:6379/2
-      USER_SERVICE_URL: http://user-service:8000
-      USER_SERVICE_JWT_SECRET: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
-      USER_SERVICE_JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
-      MAIN_SERVICE_URL: http://main-service:8001
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS is required}
-      LIVEKIT_URL: ${LIVEKIT_URL:?LIVEKIT_URL is required}
-      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?LIVEKIT_API_KEY is required}
-      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?LIVEKIT_API_SECRET is required}
-      CARTESIA_API_KEY: ${CARTESIA_API_KEY:-}
-      SPEECHMATICS_API_KEY: ${SPEECHMATICS_API_KEY:-}
-      FEATHERLESS_BASE_URL: ${FEATHERLESS_BASE_URL:-https://api.featherless.ai/v1}
-      FEATHERLESS_API_KEY: ${FEATHERLESS_API_KEY:?FEATHERLESS_API_KEY is required}
-      FEATHERLESS_MODEL: ${FEATHERLESS_MODEL:-deepseek-ai/DeepSeek-V3-0324}
-      OPIK_API_KEY: ${OPIK_API_KEY:-}
-      OPIK_WORKSPACE: ${OPIK_WORKSPACE:-default}
-      OPIK_PROJECT_NAME: ${OPIK_PROJECT_NAME:-ThinkAloud.ai}
-      LLM_API_KEY: ${LLM_API_KEY:?LLM_API_KEY is required}
-      LLM_MODEL: ${LLM_MODEL:-gemini-2.5-flash}
-      LLM_BASE_URL: ${LLM_BASE_URL:-https://generativelanguage.googleapis.com/v1beta/openai/}
-      AUTH_BYPASS: 'false'
     ports:
     - ${APP_BIND_ADDRESS:-127.0.0.1}:${AI_INTERVIEWER_API_PORT:-8002}:8000
     depends_on:
@@ -240,6 +166,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     healthcheck:
       test:
@@ -264,37 +192,10 @@ services:
       context: ./AI_Interviewer
       target: worker
     container_name: thinkaloud-ai-interviewer-worker
+    env_file:
+      - ./AI_Interviewer/.env
     environment:
-      DD_AGENT_HOST: datadog-agent
-      DD_TRACE_AGENT_PORT: '8126'
-      DD_DOGSTATSD_PORT: '8125'
-      DD_ENV: ${DD_ENV:-production}
-      DD_VERSION: ${APP_VERSION:-latest}
-      DD_TRACE_ENABLED: ${DD_TRACE_ENABLED:-true}
-      DD_LOGS_INJECTION: ${DD_LOGS_INJECTION:-true}
       DD_SERVICE: ai-interviewer-worker
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/interviewer_service
-      REDIS_URL: redis://redis:6379/2
-      USER_SERVICE_URL: http://user-service:8000
-      USER_SERVICE_JWT_SECRET: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
-      USER_SERVICE_JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
-      MAIN_SERVICE_URL: http://main-service:8001
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS is required}
-      LIVEKIT_URL: ${LIVEKIT_URL:?LIVEKIT_URL is required}
-      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?LIVEKIT_API_KEY is required}
-      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?LIVEKIT_API_SECRET is required}
-      CARTESIA_API_KEY: ${CARTESIA_API_KEY:-}
-      SPEECHMATICS_API_KEY: ${SPEECHMATICS_API_KEY:-}
-      FEATHERLESS_BASE_URL: ${FEATHERLESS_BASE_URL:-https://api.featherless.ai/v1}
-      FEATHERLESS_API_KEY: ${FEATHERLESS_API_KEY:?FEATHERLESS_API_KEY is required}
-      FEATHERLESS_MODEL: ${FEATHERLESS_MODEL:-deepseek-ai/DeepSeek-V3-0324}
-      OPIK_API_KEY: ${OPIK_API_KEY:-}
-      OPIK_WORKSPACE: ${OPIK_WORKSPACE:-default}
-      OPIK_PROJECT_NAME: ${OPIK_PROJECT_NAME:-ThinkAloud.ai}
-      LLM_API_KEY: ${LLM_API_KEY:?LLM_API_KEY is required}
-      LLM_MODEL: ${LLM_MODEL:-gemini-2.5-flash}
-      LLM_BASE_URL: ${LLM_BASE_URL:-https://generativelanguage.googleapis.com/v1beta/openai/}
-      AUTH_BYPASS: 'false'
     depends_on:
       ai-interviewer-api:
         condition: service_healthy
@@ -303,6 +204,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     labels:
       com.thinkaloud.service: ai-interviewer-worker
@@ -352,6 +255,41 @@ services:
       timeout: 3s
       retries: 10
     restart: unless-stopped
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: thinkaloud-dev-rabbitmq
+    networks: *id001
+    ports:
+    - 127.0.0.1:${RABBITMQ_PORT:-5672}:5672
+    - 127.0.0.1:${RABBITMQ_MGMT_PORT:-15672}:15672
+    volumes:
+    - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+  ai-interviewer-analysis-worker:
+    init: true
+    networks: *id001
+    restart: unless-stopped
+    logging: *id002
+    build:
+      context: ./AI_Interviewer
+      target: analysis_worker
+    container_name: thinkaloud-ai-interviewer-analysis-worker
+    env_file:
+      - ./AI_Interviewer/.env
+    environment:
+      DD_SERVICE: ai-interviewer-analysis-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
 networks:
   thinkaloud:
     name: thinkaloud-backend
@@ -359,5 +297,6 @@ networks:
 volumes:
   postgres-data: null
   redis-data: null
+  rabbitmq-data: null
   caddy_data: null
   caddy_config: null
