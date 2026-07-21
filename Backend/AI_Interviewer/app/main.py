@@ -144,6 +144,7 @@ async def get_token(
 ):
     username = current_user.get("username", "Candidate")
     user_id = current_user.get("user_id", "guest_user")
+    email = current_user.get("email", "unknown@thinkaloudai.tech")
 
     # Normalize interview_type for AI/ML variants
     if payload.interview_type in ["ml-engineer-infra", "agentic-ai-engineer"]:
@@ -240,7 +241,8 @@ async def get_token(
         interview_type=payload.interview_type,
         stage="intro_audio_check",
         resume_summary=None,
-        state_data=initial_state
+        state_data=initial_state,
+        email=email
     )
 
 

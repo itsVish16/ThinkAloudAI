@@ -34,7 +34,8 @@ async def get_or_create_user_replica(session: AsyncSession, user_id: str, email:
     user = result.scalar_one_or_none()
     
     if not user:
-        user = UserProfileReplica(id=user_id, email=email, username=username)
+        safe_email = email if email else "unknown@thinkaloudai.tech"
+        user = UserProfileReplica(id=user_id, email=safe_email, username=username)
         session.add(user)
         await session.flush()
     return user
@@ -48,11 +49,12 @@ async def save_interview_session(
     interview_type: str,
     stage: str,
     state_data: Dict[str, Any],
-    resume_summary: Optional[str] = None
+    resume_summary: Optional[str] = None,
+    email: Optional[str] = "unknown@thinkaloudai.tech"
 ):
     async with AsyncSessionLocal() as session:
         # Ensure user replica exists
-        await get_or_create_user_replica(session, user_id, username=candidate_name)
+        await get_or_create_user_replica(session, user_id, email=email, username=candidate_name)
         
         # Extract difficulty dynamically from state_data if available, otherwise default to Medium
         difficulty = "Medium"
