@@ -1,7 +1,5 @@
 # Keep this root repo clean
-Frontend/
 
-# OS / editor noise
 .DS_Store
 ._*
 Thumbs.db
@@ -110,3 +108,5 @@ BUGS_AND_ISSUES.md
 .agents/
 alter_db.py
 inject_*.py
+
+Frontend/

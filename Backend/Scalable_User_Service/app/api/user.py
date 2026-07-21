@@ -159,6 +159,8 @@ async def get_current_user_db(
     return user
 
 
+from fastapi import APIRouter, Depends, HTTPException, Request, status, BackgroundTasks
+
 @router.post(
     "/signup",
     response_model=MessageResponse,
@@ -173,7 +175,11 @@ async def get_current_user_db(
 )
 @limiter.limit(settings.rate_limit_signup)
 async def signup(
-    request: Request, payload: SignupRequest, db: AsyncSession = Depends(get_db), redis: Redis = Depends(get_redis)
+    request: Request,
+    payload: SignupRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis)
 ):
     existing_email = await get_user_by_email(db, str(payload.email))
     existing_username = await get_user_by_username(db, payload.username)
@@ -223,9 +229,10 @@ async def signup(
     verification_otp = generate_otp()
     await set_email_verification_token(redis, str(user.email), verification_otp)
     logger.info("verification_otp_generated", email=str(user.email))
-    await publish_email_task("verification_email", str(user.email), {"otp": verification_otp})
+    background_tasks.add_task(publish_email_task, "verification_email", str(user.email), {"otp": verification_otp})
 
-    await publish_user_event(
+    background_tasks.add_task(
+        publish_user_event,
         redis,
         "user.created",
         {
@@ -436,6 +443,7 @@ async def logout(
 async def forgot_password(
     request: Request,
     payload: ForgotPasswordRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
 ):
@@ -445,7 +453,7 @@ async def forgot_password(
         reset_otp = generate_otp()
         await set_password_reset_token(redis, str(payload.email), reset_otp)
         logger.info("password_reset_otp_generated", email=str(payload.email))
-        await publish_email_task("password_reset_email", str(payload.email), {"otp": reset_otp})
+        background_tasks.add_task(publish_email_task, "password_reset_email", str(payload.email), {"otp": reset_otp})
 
         if settings.debug:
             return {"message": f"Password reset OTP generated: {reset_otp}"}
@@ -563,6 +571,7 @@ async def update_me(
 async def verify_email(
     request: Request,
     payload: VerifyEmailRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
 ):
@@ -583,9 +592,10 @@ async def verify_email(
     await mark_user_verified(db, user)
     await delete_email_verification_token(redis, str(payload.email))
     await delete_cached_user_profile(redis, user.id)
-    await publish_email_task("welcome_email", str(user.email), {"full_name": user.full_name})
+    background_tasks.add_task(publish_email_task, "welcome_email", str(user.email), {"full_name": user.full_name})
 
-    await publish_user_event(
+    background_tasks.add_task(
+        publish_user_event,
         redis,
         "user.verified",
         {
@@ -609,6 +619,7 @@ async def verify_email(
 async def resend_verification(
     request: Request,
     payload: ResendVerificationRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
 ):
@@ -623,7 +634,7 @@ async def resend_verification(
     verification_otp = generate_otp()
     await set_email_verification_token(redis, str(payload.email), verification_otp)
     logger.info("verification_otp_regenerated", email=str(payload.email))
-    await publish_email_task("verification_email", str(payload.email), {"otp": verification_otp})
+    background_tasks.add_task(publish_email_task, "verification_email", str(payload.email), {"otp": verification_otp})
 
     if settings.debug:
         return {"message": f"Verification OTP generated: {verification_otp}"}
