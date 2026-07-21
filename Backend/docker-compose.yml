@@ -233,11 +233,11 @@ services:
       retries: 10
     restart: unless-stopped
   redis:
-    image: redis:7-alpine
+    image: valkey/valkey:8-alpine
     container_name: thinkaloud-dev-redis
     networks: *id001
     command:
-    - redis-server
+    - valkey-server
     - --appendonly
     - 'yes'
     - --loglevel
@@ -249,7 +249,7 @@ services:
     healthcheck:
       test:
       - CMD
-      - redis-cli
+      - valkey-cli
       - ping
       interval: 10s
       timeout: 3s
