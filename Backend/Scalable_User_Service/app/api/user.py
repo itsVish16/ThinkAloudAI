@@ -181,8 +181,15 @@ async def signup(
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis)
 ):
+    import time
+    start_time = time.time()
     existing_email = await get_user_by_email(db, str(payload.email))
+    t_db1 = time.time()
+    logger.info(f"PERF_LOG: get_user_by_email took {t_db1 - start_time:.4f}s")
+    
     existing_username = await get_user_by_username(db, payload.username)
+    t_db2 = time.time()
+    logger.info(f"PERF_LOG: get_user_by_username took {t_db2 - t_db1:.4f}s")
 
     if existing_email is not None:
         if existing_email.is_verified:
@@ -196,13 +203,20 @@ async def signup(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="Username is already taken",
                 )
+            
+            t_hash_start = time.time()
             password_hash = await hash_password(payload.password)
+            t_hash_end = time.time()
+            logger.info(f"PERF_LOG: hash_password took {t_hash_end - t_hash_start:.4f}s")
+            
             existing_email.username = payload.username
             existing_email.full_name = payload.full_name
             existing_email.password_hash = password_hash
             try:
+                t_commit_start = time.time()
                 await db.commit()
                 await db.refresh(existing_email)
+                logger.info(f"PERF_LOG: db_commit_update took {time.time() - t_commit_start:.4f}s")
             except IntegrityError:
                 await db.rollback()
                 raise HTTPException(
@@ -217,9 +231,15 @@ async def signup(
                 detail="Username is already taken",
             )
 
+        t_hash_start = time.time()
         password_hash = await hash_password(payload.password)
+        t_hash_end = time.time()
+        logger.info(f"PERF_LOG: hash_password took {t_hash_end - t_hash_start:.4f}s")
+        
         try:
+            t_create_start = time.time()
             user = await create_user(db, payload, password_hash)
+            logger.info(f"PERF_LOG: create_user (db) took {time.time() - t_create_start:.4f}s")
         except IntegrityError:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -227,10 +247,15 @@ async def signup(
             )
 
     verification_otp = generate_otp()
+    
+    t_redis_start = time.time()
     await set_email_verification_token(redis, str(user.email), verification_otp)
+    logger.info(f"PERF_LOG: redis_set_token took {time.time() - t_redis_start:.4f}s")
+    
     logger.info("verification_otp_generated", email=str(user.email))
+    
+    t_bg_start = time.time()
     background_tasks.add_task(publish_email_task, "verification_email", str(user.email), {"otp": verification_otp})
-
     background_tasks.add_task(
         publish_user_event,
         redis,
@@ -243,6 +268,8 @@ async def signup(
             "is_verified": user.is_verified,
         },
     )
+    logger.info(f"PERF_LOG: add_bg_tasks took {time.time() - t_bg_start:.4f}s")
+    logger.info(f"PERF_LOG: TOTAL REQUEST TIME took {time.time() - start_time:.4f}s")
 
     if settings.debug:
         return {"message": f"User registered successfully. Verification OTP: {verification_otp}"}
