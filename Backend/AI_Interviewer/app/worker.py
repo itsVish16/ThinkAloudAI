@@ -328,6 +328,8 @@ async def entrypoint(ctx: agents.JobContext):
         tts = speechmatics.TTS()
     else:
         logger.info("Speechmatics API key not provided or placeholder. Falling back to OpenAI STT and TTS.")
+        if not os.getenv("OPENAI_API_KEY"):
+            os.environ["OPENAI_API_KEY"] = os.getenv("LLM_API_KEY", "dummy-key-to-prevent-crash")
         from livekit.plugins import openai
         stt = openai.STT()
         tts = openai.TTS()
