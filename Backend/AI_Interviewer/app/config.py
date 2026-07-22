@@ -9,10 +9,10 @@ class Config:
     LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET")
     SPEECHMATICS_API_KEY = os.getenv("SPEECHMATICS_API_KEY")
 
-    # LLM Settings (OpenAI-compatible: Gemini, Groq, Featherless, etc.)
+    # LLM Settings (OpenAI-compatible: Fireworks, Gemini, Groq, etc.)
     LLM_API_KEY = os.getenv("LLM_API_KEY", "")
-    LLM_MODEL = os.getenv("LLM_MODEL", "gemini-2.5-flash")
-    LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/")
+    LLM_MODEL = os.getenv("LLM_MODEL", "accounts/fireworks/models/llama-v3p1-70b-instruct")
+    LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.fireworks.ai/inference/v1")
 
     # External User Service Config (defaults assume the unified docker stack)
     USER_SERVICE_URL = os.getenv("USER_SERVICE_URL", "http://localhost:8000")
