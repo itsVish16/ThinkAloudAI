@@ -10,7 +10,7 @@ logger = logging.getLogger("llm")
 
 # Initialize AsyncOpenAI client (works with any OpenAI-compatible API: Gemini, Groq, Featherless)
 client = AsyncOpenAI(
-    api_key=settings.LLM_API_KEY,
+    api_key=settings.LLM_API_KEY or "dummy_key_not_set",
     base_url=settings.LLM_BASE_URL
 )
 

@@ -28,7 +28,7 @@ class LocalVLMService:
             logger.warning("FIREWORKS_API_KEY is not set. Vision service will fail.")
             
         self.client = AsyncOpenAI(
-            api_key=self.api_key,
+            api_key=self.api_key or "dummy_key_not_set",
             base_url="https://api.fireworks.ai/inference/v1"
         )
         self.model = "accounts/fireworks/models/qwen3p7-plus"

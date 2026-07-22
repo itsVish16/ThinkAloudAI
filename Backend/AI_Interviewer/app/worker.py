@@ -318,14 +318,19 @@ async def entrypoint(ctx: agents.JobContext):
 
     logger.info(f"Extracted metadata: candidate_name={candidate_name}, user_id={user_id}, interview_type={interview_type}, questions={len(ai_selected_questions)}")
 
-    stt = speechmatics.STT(
-        turn_detection_mode=TurnDetectionMode.ADAPTIVE,
-        end_of_utterance_silence_trigger=0.5,
-    )
-    # Speechmatics TTS - real-time streaming audio
-    tts = speechmatics.TTS()
-    # Prewarm the WebSocket connection so it's ready immediately
-    # tts.prewarm() # removed, speechmatics TTS doesn't seem to have prewarm, or I will let it just be tts = speechmatics.TTS()
+    speechmatics_key = os.getenv("SPEECHMATICS_API_KEY", "").strip()
+    if speechmatics_key and not speechmatics_key.startswith("<"):
+        logger.info("Initializing Speechmatics STT and TTS")
+        stt = speechmatics.STT(
+            turn_detection_mode=TurnDetectionMode.ADAPTIVE,
+            end_of_utterance_silence_trigger=0.5,
+        )
+        tts = speechmatics.TTS()
+    else:
+        logger.info("Speechmatics API key not provided or placeholder. Falling back to OpenAI STT and TTS.")
+        from livekit.plugins import openai
+        stt = openai.STT()
+        tts = openai.TTS()
     vad = silero.VAD.load()
 
     session = AgentSession(
@@ -551,7 +556,11 @@ async def entrypoint(ctx: agents.JobContext):
         logger.info("Generating initial greeting...")
         queue = asyncio.Queue()
         agent.state["stream_queue"] = queue
-        speech_handle = session.say(queue_generator(queue))
+        try:
+            speech_handle = session.say(queue_generator(queue))
+        except RuntimeError as e:
+            logger.warning(f"Could not say initial greeting because session ended: {e}")
+            return
 
         # Seed with a user message so Gemini API has non-empty contents
         agent.state["messages"].append({"role": "user", "content": f"Hi, I am {candidate_name} and I am ready to start the interview."})
