@@ -1,109 +1,112 @@
 <div align="center">
-  <img src="Frontend/AI_Interview_frontend/public/logo.png" alt="ThinkAloud AI Logo" width="120">
-
-  <h1 align="center">ThinkAloud AI</h1>
-
-  <p align="center">
-    <strong>An AI-powered technical interview platform with real-time voice, code execution, and adaptive roadmaps.</strong>
-  </p>
-
-  <p align="center">
-    <a href="https://github.com/yourusername/ThinkAloudAI/network/members">
-      <img src="https://img.shields.io/github/forks/yourusername/ThinkAloudAI?style=for-the-badge" alt="Forks" />
-    </a>
-    <a href="https://github.com/yourusername/ThinkAloudAI/stargazers">
-      <img src="https://img.shields.io/github/stars/yourusername/ThinkAloudAI?style=for-the-badge" alt="Stars" />
-    </a>
-    <a href="https://github.com/yourusername/ThinkAloudAI/blob/main/LICENSE">
-      <img src="https://img.shields.io/github/license/yourusername/ThinkAloudAI?style=for-the-badge" alt="License" />
-    </a>
-  </p>
+  <img src="./logo.png" alt="ThinkAloud AI Logo" width="300" />
+  <h1>ThinkAloud AI</h1>
+  <p>An interactive, AI-powered system design and DSA interview platform.</p>
 </div>
 
 ---
 
-## 🚀 What is ThinkAloud AI?
+## 📌 Architecture Overview
 
-ThinkAloud AI simulates real technical interviews using **live voice conversation** with an AI interviewer powered by Large Language Models (Gemini / DeepSeek). Unlike static coding platforms, ThinkAloud requires you to speak your thought process out loud, just like a real interview.
+ThinkAloud AI is composed of a microservices backend and a React/Vite frontend. It leverages **FastAPI** for robust, asynchronous backend services and **LiveKit** to handle real-time WebRTC audio for the AI interviewer.
 
-The platform guides you through the complete interview loop:
-* **Real-time Voice Interactions:** WebRTC audio streaming allows for fluid, two-way conversations with the AI interviewer, which adapts to your answers.
-* **Live Code Execution:** Write Python or C++ in sandboxed environments while the AI watches and evaluates your code against hidden test cases.
-* **Whiteboard System Design:** Built-in Excalidraw integration for architectural design interviews.
-* **Structured Feedback:** Post-interview analysis grades you on Technical skill, Communication, and English fluency using the STAR method.
-* **AI Chat & Roadmaps:** A built-in AI assistant can search the web, fetch DSA questions, and generate personalized, multi-day study roadmaps.
+### High-Level System Architecture
 
-## 🧠 How It Works
+```mermaid
+graph TD
+    User([User / Browser])
+    
+    subgraph Frontend [Frontend (React + Vite)]
+        UI[UI & WebRTC Client]
+    end
+    
+    subgraph Backend [Backend (FastAPI Microservices)]
+        UserService[User Service<br/>Auth & Profiles]
+        MainService[Main Service<br/>Core Logic & DSA]
+        AIApi[AI Interviewer API<br/>Room Management]
+        AIWorker[AI Interviewer Worker<br/>LiveKit Agent]
+    end
+    
+    subgraph Infrastructure [Data & Comms]
+        DB[(PostgreSQL)]
+        Cache[(Redis)]
+        RabbitMQ([RabbitMQ])
+        LiveKit[LiveKit Server]
+    end
+    
+    subgraph External [External APIs]
+        LLM[LLM API<br/>Fireworks/Groq]
+        Voice[Voice APIs<br/>Speechmatics/Cartesia]
+    end
 
-ThinkAloud AI relies on a highly concurrent, event-driven state machine to manage the complexity of live voice interviews:
+    User <-->|HTTPS| UI
+    User <-->|WebRTC (UDP)| LiveKit
+    
+    UI <-->|HTTPS| UserService
+    UI <-->|HTTPS| MainService
+    UI <-->|HTTPS| AIApi
+    
+    UserService <--> DB
+    MainService <--> DB
+    MainService <--> Cache
+    
+    AIApi <--> Cache
+    AIApi --> LiveKit
+    
+    AIWorker <--> LiveKit
+    AIWorker <--> LLM
+    AIWorker <--> Voice
+    AIWorker <--> Cache
+    
+    MainService -.->|Async Events| RabbitMQ
+    UserService -.->|Async Events| RabbitMQ
+```
 
-1. **Audio Streaming:** The candidate's microphone audio is streamed to the backend via **LiveKit (WebRTC)**.
-2. **Transcription & VAD:** Audio is transcribed in real-time. Voice Activity Detection (VAD) handles interruptions and silence timeouts.
-3. **LangGraph State Machine:** The AI interviewer's logic is governed by **LangGraph**. The interview moves deterministically through predefined stages (e.g., *Intro -> Approach -> Coding -> Testing*).
-4. **LLM Evaluation:** A background LLM evaluator runs after every turn to decide if the candidate has met the objective of the current stage before advancing.
-5. **Code Execution:** When the candidate hits "Run", the code is dispatched to **E2B Sandboxes** for secure remote execution.
-6. **Analytics Sync:** Upon completion, a RabbitMQ event is published. A background worker generates deep feedback, while the User Service updates the candidate's gamified profile (streaks, scores, and leaderboards).
+## 🏗️ Backend Services Explained
 
-## 🏗️ System Architecture
+We split the backend into three distinct microservices to ensure scalability, fault isolation, and independent deployments.
 
-ThinkAloud AI is designed for scale using an event-driven Microservices architecture:
+1. **User Service (`user-service`)**
+   - **Role:** Manages user authentication, profile creation, and session JWT issuing.
+   - **Why separate?** Keeping authentication decoupled ensures that if the main or interview services experience high load, users can still log in, sign up, and view their dashboards without latency.
 
-* **React Frontend:** A Vite-powered SPA utilizing Tailwind CSS, LiveKit React SDK, and Monaco Editor.
-* **Caddy API Gateway:** Routes all inbound traffic to the appropriate microservices.
-* **AI Interviewer Service (Port 8002):** The core engine. It manages LiveKit WebRTC tokens, runs the LangGraph state machine, and streams audio responses via Cartesia TTS.
-* **Main Service (Port 8001):** Manages the DSA question banks, secure E2B code execution, roadmap CRUD, and the ReAct AI Chat Assistant.
-* **Scalable User Service (Port 8000):** Manages JWT Authentication, User Profiles, and gamification metrics.
-* **Data Layer:** Three isolated **PostgreSQL** databases, **Redis** (for pub/sub streaming and caching), and **RabbitMQ** (for durable background event processing).
+2. **Main Service (`main-service`)**
+   - **Role:** Handles the core business logic, including fetching DSA questions, storing interview transcripts, maintaining user progress, and saving live code-editor states.
+   - **Data Flow:** Uses PostgreSQL for persistent storage and Redis for caching fast-access data like active sessions.
 
-> **Visual Diagrams:** Detailed Excalidraw-compatible system architecture diagrams are available in the project documentation.
-
-## 🛠️ Tech Stack
-
-* **Frontend:** React 18, Vite, Tailwind CSS, Monaco Editor, Excalidraw, LiveKit
-* **Backend:** Python 3.12, FastAPI, SQLAlchemy 2.0 (Async), LangGraph, E2B
-* **AI & Voice:** Google Gemini 2.5, DeepSeek, Cartesia TTS, Speechmatics STT
-* **Infrastructure:** PostgreSQL 16, Redis 7, RabbitMQ 3, Docker Compose
-
----
-
-## 💻 Getting Started
-
-To get a local copy up and running, follow these simple steps.
-
-### Prerequisites
-
-You will need Docker and Docker Compose installed on your system.
-
-### Installation
-
-1. **Clone the repo**
-   ```sh
-   git clone https://github.com/yourusername/ThinkAloudAI.git
-   cd ThinkAloudAI
-   ```
-2. **Setup Environment Variables**
-   ```sh
-   cd Backend
-   cp .env.example .env
-   # Edit .env with your LiveKit, LLM, and API keys.
-   ```
-3. **Start the Infrastructure (Databases)**
-   ```sh
-   docker compose -f docker-compose.infra.yml up -d
-   ```
-4. **Run the Application Services**
-   ```sh
-   docker compose up -d --build
-   ```
-5. **Start the Frontend**
-   ```sh
-   cd ../Frontend/AI_Interview_frontend
-   npm install
-   npm run dev
-   ```
+3. **AI Interviewer Worker (`ai-interviewer-worker` / `api`)**
+   - **Role:** The "brain" of the platform. It maintains a persistent WebSocket connection with LiveKit to process live audio (STT), stream context to the LLM (Fireworks), and synthesize speech back to the user (TTS via Cartesia/OpenAI).
+   - **Why LiveKit?** Traditional HTTP polling is too slow for voice AI. WebRTC guarantees ultra-low latency (<500ms) necessary for a natural, conversational interview flow.
 
 ---
 
-## 📄 License
+## 🛠️ Design Decisions & Trade-offs
 
-Distributed under the MIT License. See `LICENSE` for more information.
+### 1. Why FastAPI?
+- **Speed & Async Native:** FastAPI is built on Starlette and allows native `async`/`await`. Since our system heavily relies on I/O-bound tasks (database queries, external LLM API calls, LiveKit webhooks), asynchronous endpoints prevent thread blocking and allow massive concurrency.
+- **Validation:** Pydantic ensures strict type validation for incoming JSON data, dramatically reducing runtime errors and manual validation code.
+
+### 2. Why Async Endpoints?
+Synchronous endpoints block the worker thread while waiting for a network request (e.g., waiting 2 seconds for an LLM to generate a response). By using asynchronous endpoints (`async def`), a single Uvicorn worker can handle thousands of concurrent API requests, releasing the thread while waiting for I/O operations to complete.
+
+### 3. JWT in Background Tasks
+- **Why JWT?** We use JSON Web Tokens (JWT) for stateless authentication. Instead of querying the database for every single request to verify a session, the microservices simply verify the cryptographic signature of the token.
+- **Background Tasks:** When a background task (like generating an interview summary) needs to run asynchronously via RabbitMQ, we pass the JWT payload rather than maintaining a persistent DB connection. This keeps background workers decoupled from the HTTP request lifecycle and highly scalable.
+
+### 4. Connection Pooling (Database)
+- **What is it?** Instead of opening a new TCP connection to PostgreSQL for every user request (which is incredibly slow and resource-heavy), we use a Connection Pool (via `asyncpg` and SQLAlchemy). The pool maintains a set of ready-to-use connections.
+- **Why?** It drastically reduces latency and prevents the database from crashing under high load (e.g., if 1,000 users submit their code at the exact same time).
+
+### 5. Dependency Injection (`Depends`)
+- FastAPI's Dependency Injection system is used extensively throughout the routes (e.g., `Depends(get_db)`, `Depends(get_current_user)`).
+- **Benefit:** It makes the code modular, extremely easy to mock during unit testing, and ensures database connections are automatically opened and safely closed per request without boilerplate code.
+
+---
+
+## ⚠️ Known Limitations & Failure Points ("Where does it break?")
+
+Every architecture has trade-offs. Here is where our current design might fail at scale:
+
+- **WebRTC Network Restrictions:** Corporate firewalls or strict NATs can block UDP traffic, causing the LiveKit audio connection to fallback to slower TCP TURN servers, resulting in noticeable audio latency.
+- **Database Bottleneck:** While connection pooling helps, the primary PostgreSQL database is currently a single point of failure. If the DB goes down, the Main and User services halt. A future improvement would be implementing read replicas.
+- **External API Rate Limits:** The AI Interviewer heavily depends on third-party APIs (Fireworks for LLM, Speechmatics/Cartesia for Voice). If an external API goes down or we hit a rate limit, the AI worker will timeout. We mitigate this using fallbacks (e.g., failing over to OpenAI), but it remains a critical external dependency risk.
