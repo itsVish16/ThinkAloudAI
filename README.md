@@ -12,55 +12,7 @@ ThinkAloud AI is composed of a microservices backend and a React/Vite frontend. 
 
 ### High-Level System Architecture
 
-```mermaid
-graph TD
-    User([User / Browser])
-    
-    subgraph Frontend [Frontend (React + Vite)]
-        UI[UI & WebRTC Client]
-    end
-    
-    subgraph Backend [Backend (FastAPI Microservices)]
-        UserService[User Service<br/>Auth & Profiles]
-        MainService[Main Service<br/>Core Logic & DSA]
-        AIApi[AI Interviewer API<br/>Room Management]
-        AIWorker[AI Interviewer Worker<br/>LiveKit Agent]
-    end
-    
-    subgraph Infrastructure [Data & Comms]
-        DB[(PostgreSQL)]
-        Cache[(Redis)]
-        RabbitMQ([RabbitMQ])
-        LiveKit[LiveKit Server]
-    end
-    
-    subgraph External [External APIs]
-        LLM[LLM API<br/>Fireworks/Groq]
-        Voice[Voice APIs<br/>Speechmatics/Cartesia]
-    end
-
-    User <-->|HTTPS| UI
-    User <-->|WebRTC (UDP)| LiveKit
-    
-    UI <-->|HTTPS| UserService
-    UI <-->|HTTPS| MainService
-    UI <-->|HTTPS| AIApi
-    
-    UserService <--> DB
-    MainService <--> DB
-    MainService <--> Cache
-    
-    AIApi <--> Cache
-    AIApi --> LiveKit
-    
-    AIWorker <--> LiveKit
-    AIWorker <--> LLM
-    AIWorker <--> Voice
-    AIWorker <--> Cache
-    
-    MainService -.->|Async Events| RabbitMQ
-    UserService -.->|Async Events| RabbitMQ
-```
+![System Architecture](./System_design.png)
 
 ## 🏗️ Backend Services Explained
 
