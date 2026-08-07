@@ -1,64 +1,152 @@
 <div align="center">
-  <img src="./logo.png" alt="ThinkAloud AI Logo" width="300" />
-  <h1>ThinkAloud AI</h1>
-  <p>An interactive, AI-powered system design and DSA interview platform.</p>
+  <img src="./logo.png" alt="ThinkAloud AI" width="280" />
+
+  <h3>🎙️ AI-Powered Mock Interview Platform</h3>
+  <p>Real-time voice interviews · Live code editor · Instant AI feedback</p>
+
+  <br/>
+
+  ![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white)
+  ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
+  ![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react&logoColor=black)
+  ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
+  ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
+  ![Redis](https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white)
+  ![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+  ![RabbitMQ](https://img.shields.io/badge/RabbitMQ-FF6600?style=for-the-badge&logo=rabbitmq&logoColor=white)
+  ![LiveKit](https://img.shields.io/badge/LiveKit_WebRTC-1F1F1F?style=for-the-badge&logo=webrtc&logoColor=white)
+  ![LangGraph](https://img.shields.io/badge/LangGraph-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white)
+
 </div>
 
----
+<br/>
 
-## 📌 Architecture Overview
+## ✨ What is ThinkAloud AI?
 
-ThinkAloud AI is composed of a microservices backend and a React/Vite frontend. It leverages **FastAPI** for robust, asynchronous backend services and **LiveKit** to handle real-time WebRTC audio for the AI interviewer.
+A platform where an **AI interviewer talks to you in real-time** — just like a real phone screen. It listens to your voice, watches your code, evaluates your approach, and gives detailed post-interview analysis.
 
-### High-Level System Architecture
+| Feature | Description |
+|---|---|
+| 🎤 **Voice-to-Voice AI** | Real-time conversational interviewer via WebRTC (< 900ms latency) |
+| 💻 **Live Code Editor** | Monaco-based editor with syntax highlighting, code execution & test cases |
+| 🧠 **LangGraph State Machine** | Multi-stage interview flow (intro → approach → coding → testing → wrap-up) |
+| 🎨 **Excalidraw Canvas** | Built-in whiteboard for System Design interviews |
+| 📊 **AI Analysis Dashboard** | Post-interview scores, strengths, weaknesses & improvement plans |
+| 🔐 **Auth & Profiles** | JWT authentication, user stats, skill tracking & activity heatmaps |
 
-![System Architecture](./System_design.png)
+<br/>
 
-## 🏗️ Backend Services Explained
+## 🏗️ System Architecture
 
-We split the backend into three distinct microservices to ensure scalability, fault isolation, and independent deployments.
+<div align="center">
+  <img src="./System_design.png" alt="System Architecture" width="100%" />
+</div>
 
-1. **User Service (`user-service`)**
-   - **Role:** Manages user authentication, profile creation, and session JWT issuing.
-   - **Why separate?** Keeping authentication decoupled ensures that if the main or interview services experience high load, users can still log in, sign up, and view their dashboards without latency.
+<br/>
 
-2. **Main Service (`main-service`)**
-   - **Role:** Handles the core business logic, including fetching DSA questions, storing interview transcripts, maintaining user progress, and saving live code-editor states.
-   - **Data Flow:** Uses PostgreSQL for persistent storage and Redis for caching fast-access data like active sessions.
+## 🧩 Microservices Breakdown
 
-3. **AI Interviewer Worker (`ai-interviewer-worker` / `api`)**
-   - **Role:** The "brain" of the platform. It maintains a persistent WebSocket connection with LiveKit to process live audio (STT), stream context to the LLM (Fireworks), and synthesize speech back to the user (TTS via Cartesia/OpenAI).
-   - **Why LiveKit?** Traditional HTTP polling is too slow for voice AI. WebRTC guarantees ultra-low latency (<500ms) necessary for a natural, conversational interview flow.
+The backend is split into **three independent services** for scalability and fault isolation:
 
----
+| Service | Port | Stack | Responsibility |
+|---|---|---|---|
+| 🔐 **User Service** | `8000` | FastAPI · PostgreSQL · JWT | Auth, profiles, session management |
+| ⚙️ **Main Service** | `8001` | FastAPI · PostgreSQL · Redis · RabbitMQ | DSA questions, code execution, progress tracking |
+| 🤖 **AI Interviewer** | `8002` | LiveKit Agents · LangGraph · Speechmatics · Cartesia | Real-time voice AI, interview state machine |
 
-## 🛠️ Design Decisions & Trade-offs
+<br/>
 
-### 1. Why FastAPI?
-- **Speed & Async Native:** FastAPI is built on Starlette and allows native `async`/`await`. Since our system heavily relies on I/O-bound tasks (database queries, external LLM API calls, LiveKit webhooks), asynchronous endpoints prevent thread blocking and allow massive concurrency.
-- **Validation:** Pydantic ensures strict type validation for incoming JSON data, dramatically reducing runtime errors and manual validation code.
+## 🔊 Voice AI Pipeline
 
-### 2. Why Async Endpoints?
-Synchronous endpoints block the worker thread while waiting for a network request (e.g., waiting 2 seconds for an LLM to generate a response). By using asynchronous endpoints (`async def`), a single Uvicorn worker can handle thousands of concurrent API requests, releasing the thread while waiting for I/O operations to complete.
+The core innovation — how a user's voice becomes an AI response in under 500ms:
 
-### 3. JWT in Background Tasks
-- **Why JWT?** We use JSON Web Tokens (JWT) for stateless authentication. Instead of querying the database for every single request to verify a session, the microservices simply verify the cryptographic signature of the token.
-- **Background Tasks:** When a background task (like generating an interview summary) needs to run asynchronously via RabbitMQ, we pass the JWT payload rather than maintaining a persistent DB connection. This keeps background workers decoupled from the HTTP request lifecycle and highly scalable.
+```
+🎤 User Speaks
+    │
+    ▼
+┌──────────────────┐
+│  LiveKit (WebRTC) │  ← UDP, not TCP — no head-of-line blocking
+└────────┬─────────┘
+         ▼
+┌──────────────────┐
+│ Speechmatics STT │  ← Real-time transcription
+└────────┬─────────┘
+         ▼
+┌──────────────────┐
+│ LangGraph + LLM  │  ← State-aware response (Gemini / Fireworks)
+└────────┬─────────┘
+         ▼
+┌──────────────────┐
+│  Cartesia TTS    │  ← Streaming speech synthesis
+└────────┬─────────┘
+         ▼
+    🔈 AI Responds
+```
 
-### 4. Connection Pooling (Database)
-- **What is it?** Instead of opening a new TCP connection to PostgreSQL for every user request (which is incredibly slow and resource-heavy), we use a Connection Pool (via `asyncpg` and SQLAlchemy). The pool maintains a set of ready-to-use connections.
-- **Why?** It drastically reduces latency and prevents the database from crashing under high load (e.g., if 1,000 users submit their code at the exact same time).
+<br/>
 
-### 5. Dependency Injection (`Depends`)
-- FastAPI's Dependency Injection system is used extensively throughout the routes (e.g., `Depends(get_db)`, `Depends(get_current_user)`).
-- **Benefit:** It makes the code modular, extremely easy to mock during unit testing, and ensures database connections are automatically opened and safely closed per request without boilerplate code.
+## 🛠️ Key Design Decisions
 
----
+| Decision | Why |
+|---|---|
+| **FastAPI + Async** | I/O-bound system (DB, LLM calls, WebSockets) — async prevents thread blocking |
+| **WebRTC over WebSockets** | WebRTC uses UDP for media; WebSockets use TCP which suffers from head-of-line blocking |
+| **Microservices** | AI worker is CPU-heavy; isolating it prevents auth/CRUD services from degrading |
+| **Connection Pooling** | AsyncPG pool avoids opening a new TCP connection per request — critical under load |
+| **JWT (Stateless Auth)** | No DB lookup per request; background workers validate tokens independently |
+| **RabbitMQ** | Decouples heavy tasks (post-interview analysis) from the request lifecycle |
+| **LangGraph State Machine** | Deterministic interview flow with an LLM evaluator that controls stage transitions |
 
-## ⚠️ Known Limitations & Failure Points ("Where does it break?")
+<br/>
 
-Every architecture has trade-offs. Here is where our current design might fail at scale:
+## ⚡ Quick Start
 
-- **WebRTC Network Restrictions:** Corporate firewalls or strict NATs can block UDP traffic, causing the LiveKit audio connection to fallback to slower TCP TURN servers, resulting in noticeable audio latency.
-- **Database Bottleneck:** While connection pooling helps, the primary PostgreSQL database is currently a single point of failure. If the DB goes down, the Main and User services halt. A future improvement would be implementing read replicas.
-- **External API Rate Limits:** The AI Interviewer heavily depends on third-party APIs (Fireworks for LLM, Speechmatics/Cartesia for Voice). If an external API goes down or we hit a rate limit, the AI worker will timeout. We mitigate this using fallbacks (e.g., failing over to OpenAI), but it remains a critical external dependency risk.
+```bash
+# Clone
+git clone https://github.com/itsVish16/ThinkAloudAI.git
+cd ThinkAloudAI
+
+# Backend (Docker)
+cd Backend
+cp .env.example .env        # fill in your API keys
+docker compose up -d
+
+# Frontend
+cd ../Frontend/AI_Interview_frontend
+npm install && npm run dev
+```
+
+<br/>
+
+## ⚠️ Known Limitations
+
+| Area | Issue | Mitigation |
+|---|---|---|
+| 🌐 **WebRTC** | Corporate firewalls block UDP → falls back to TCP TURN | Configurable TURN servers |
+| 🗄️ **Database** | Single PostgreSQL instance = single point of failure | Future: read replicas |
+| 🔗 **External APIs** | LLM/TTS providers can rate-limit or go down | Provider fallback chain (Gemini → Fireworks → OpenAI) |
+
+<br/>
+
+## 📁 Project Structure
+
+```
+ThinkAloudAI/
+├── Frontend/
+│   └── AI_Interview_frontend/     # React + Vite + TypeScript
+│
+├── Backend/
+│   ├── Scalable_User_Service/     # Auth & user management
+│   ├── main_service/              # Core business logic & DSA
+│   ├── AI_Interviewer/            # Voice AI agent (LiveKit + LangGraph)
+│   ├── docker-compose.yml         # Full stack orchestration
+│   └── Caddyfile                  # Reverse proxy config
+│
+└── System_design.png              # Architecture diagram
+```
+
+<br/>
+
+<div align="center">
+  <sub>Built with ❤️ by <a href="https://github.com/itsVish16">Vishal</a></sub>
+</div>
