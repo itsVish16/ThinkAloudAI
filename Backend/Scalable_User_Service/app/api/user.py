@@ -56,7 +56,6 @@ from app.services.cache import (
     set_email_verification_token,
     set_password_reset_token,
 )
-from app.services.event_publisher import publish_user_event
 from app.services.user_service import (
     create_user,
     get_user_by_email,
@@ -256,18 +255,6 @@ async def signup(
     
     t_bg_start = time.time()
     background_tasks.add_task(publish_email_task, "verification_email", str(user.email), {"otp": verification_otp})
-    background_tasks.add_task(
-        publish_user_event,
-        redis,
-        "user.created",
-        {
-            "id": user.id,
-            "email": str(user.email),
-            "username": user.username,
-            "full_name": user.full_name,
-            "is_verified": user.is_verified,
-        },
-    )
     logger.info(f"PERF_LOG: add_bg_tasks took {time.time() - t_bg_start:.4f}s")
     logger.info(f"PERF_LOG: TOTAL REQUEST TIME took {time.time() - start_time:.4f}s")
 
@@ -342,9 +329,10 @@ async def login(
     async with AsyncSession(db.bind, expire_on_commit=False) as new_db:
         await new_db.execute(update(User).where(User.id == user_id).values(last_login_at=datetime.now(UTC)))
         await new_db.commit()
-
-    access_token = create_access_token(str(user_id))
-    refresh_token = create_refresh_token(str(user_id))
+    
+    user_obj = await get_user_by_id(db, user_id)
+    access_token = create_access_token(str(user_id), username = user_obj.username, email = user_obj.email)
+    refresh_token = create_refresh_token(str(user_id), username = user_obj.username, email = user_obj.email)
 
     return {
         "access_token": access_token,
@@ -402,8 +390,8 @@ async def refresh_token(
     remaining_ttl = max(int(exp - datetime.now(UTC).timestamp()), 0)
     await blacklist_token(redis, jti, remaining_ttl)
 
-    new_access_token = create_access_token(str(user.id))
-    new_refresh_token = create_refresh_token(str(user.id))
+    new_access_token = create_access_token(str(user.id), username = user.username, email = user.email)
+    new_refresh_token = create_refresh_token(str(user.id), username = user.username, email = user.email)
 
     return {
         "access_token": new_access_token,
@@ -569,17 +557,6 @@ async def update_me(
     response_data = UserResponse.model_validate(updated_user).model_dump(mode="json")
     await set_cached_user_profile(redis, updated_user.id, response_data)
 
-    await publish_user_event(
-        redis,
-        "user.updated",
-        {
-            "id": updated_user.id,
-            "email": str(updated_user.email),
-            "username": updated_user.username,
-            "full_name": updated_user.full_name,
-        },
-    )
-
     return response_data
 
 
@@ -621,17 +598,6 @@ async def verify_email(
     await delete_cached_user_profile(redis, user.id)
     background_tasks.add_task(publish_email_task, "welcome_email", str(user.email), {"full_name": user.full_name})
 
-    background_tasks.add_task(
-        publish_user_event,
-        redis,
-        "user.verified",
-        {
-            "id": user.id,
-            "email": str(user.email),
-            "is_verified": True,
-        },
-    )
-
     return {"message": "Email verified successfully"}
 
 
@@ -669,42 +635,9 @@ async def resend_verification(
     return {"message": "If the email exists, verification instructions are ready."}
 
 
-@router.get(
-    "/me/skills",
-    response_model=list[SkillResponse],
-    summary="Get user skills",
-    description="Retrieves the current user's learning skills and scores.",
-    responses={200: {"description": "List of user skills"}, 401: {"description": "Not authenticated"}},
-)
-async def get_me_skills(current_user: User = Depends(get_current_user_db), db: AsyncSession = Depends(get_db)):
-    from sqlalchemy import select
-
-    from app.models.learning import UserSkillScore
-
-    result = await db.execute(select(UserSkillScore).filter_by(user_id=current_user.id))
-    return result.scalars().all()
-
-
-@router.get(
-    "/me/events",
-    response_model=list[LearningEventResponse],
-    summary="Get user learning events",
-    description="Retrieves the current user's recent learning events (max 100).",
-    responses={200: {"description": "List of learning events"}, 401: {"description": "Not authenticated"}},
-)
-async def get_me_events(current_user: User = Depends(get_current_user_db), db: AsyncSession = Depends(get_db)):
-    from sqlalchemy import select
-
-    from app.models.learning import LearningEvent
-
-    result = await db.execute(
-        select(LearningEvent).filter_by(user_id=current_user.id).order_by(LearningEvent.created_at.desc()).limit(100)
-    )
-    return result.scalars().all()
-
 from app.schemas.profile import FullUserProfileResponse, PublicUserProfileResponse
 from app.models.profile import UserProfile
-from app.models.learning import UserStats, DailyActivity, UserSkillScore, UserAchievement, Achievement, LearningEvent
+from app.models.learning import UserAchievement, Achievement
 
 FULL_PROFILE_CACHE_TTL = 60  # 60 seconds
 
@@ -715,7 +648,7 @@ def _full_profile_cache_key(user_id: int) -> str:
     "/me/profile",
     response_model=FullUserProfileResponse,
     summary="Get full user profile",
-    description="Returns the aggregated user profile, stats, skills, achievements, and heatmap. Redis-cached for 60s.",
+    description="Returns the aggregated user profile and achievements. Redis-cached for 60s.",
 )
 async def get_user_full_profile(
     current_user: User = Depends(get_current_user_db), 
@@ -730,23 +663,9 @@ async def get_user_full_profile(
     if cached:
         return _json.loads(cached)
 
-    # 2. Sequential queries (asyncpg doesn't support concurrent queries on one connection)
+    # 2. Sequential queries
     profile_res = await db.execute(select(UserProfile).filter_by(user_id=current_user.id))
     profile = profile_res.scalar_one_or_none()
-
-    stats_res = await db.execute(select(UserStats).filter_by(user_id=current_user.id))
-    stats = stats_res.scalar_one_or_none()
-
-    heatmap_res = await db.execute(
-        select(DailyActivity)
-        .filter_by(user_id=current_user.id)
-        .order_by(DailyActivity.activity_date.desc())
-        .limit(365)
-    )
-    heatmap = heatmap_res.scalars().all()
-
-    skills_res = await db.execute(select(UserSkillScore).filter_by(user_id=current_user.id))
-    skills = skills_res.scalars().all()
 
     ach_res = await db.execute(
         select(Achievement, UserAchievement.earned_at)
@@ -758,14 +677,6 @@ async def get_user_full_profile(
         {"title": a.title, "description": a.description, "icon_url": a.icon_url, "earned_at": earned_at.isoformat()}
         for a, earned_at in ach_res.all()
     ]
-
-    events_res = await db.execute(
-        select(LearningEvent)
-        .filter_by(user_id=current_user.id)
-        .order_by(LearningEvent.created_at.desc())
-        .limit(10)
-    )
-    recent_activity = events_res.scalars().all()
 
     # 3. Build response
     response_data = {
@@ -785,52 +696,13 @@ async def get_user_full_profile(
         "preferred_language": profile.preferred_language if profile else None,
         "resume_url": profile.resume_url if profile else None,
 
-        "stats": {
-            "problems_solved_total": stats.problems_solved_total if stats else 0,
-            "problems_solved_easy": stats.problems_solved_easy if stats else 0,
-            "problems_solved_medium": stats.problems_solved_medium if stats else 0,
-            "problems_solved_hard": stats.problems_solved_hard if stats else 0,
-            "total_submissions": stats.total_submissions if stats else 0,
-            "acceptance_rate": stats.acceptance_rate if stats else 0.0,
-            "interviews_completed": stats.interviews_completed if stats else 0,
-            "avg_interview_score": stats.avg_interview_score if stats else 0.0,
-            "best_interview_score": stats.best_interview_score if stats else 0,
-            "current_streak": stats.current_streak if stats else 0,
-            "longest_streak": stats.longest_streak if stats else 0,
-            "last_activity_date": stats.last_activity_date.isoformat() if stats and stats.last_activity_date else None,
-            "rating": stats.rating if stats else 0,
-        },
-        "heatmap": [
-            {
-                "activity_date": h.activity_date.isoformat(),
-                "problems_solved": h.problems_solved,
-                "problems_attempted": h.problems_attempted,
-                "submissions_count": h.submissions_count,
-                "interviews_done": h.interviews_done,
-                "study_minutes": h.study_minutes,
-            } for h in heatmap
-        ],
-        "skills": [
-            {"domain": s.domain, "score": s.score, "problems_solved": s.problems_solved, "interviews_done": s.interviews_done}
-            for s in skills
-        ],
         "achievements": achievements,
-        "recent_activity": [
-            {
-                "event_type": e.event_type,
-                "reference_id": e.reference_id,
-                "score_change": e.score_change,
-                "domain": e.domain,
-                "metadata_json": e.metadata_json,
-                "created_at": e.created_at.isoformat(),
-            } for e in recent_activity
-        ],
     }
 
     # 4. Cache in Redis
-    await redis.set(cache_key, _json.dumps(response_data), ex=FULL_PROFILE_CACHE_TTL)
-
+    await redis.setex(cache_key, FULL_PROFILE_CACHE_TTL, _json.dumps(response_data))
     return response_data
+
 
 @router.get(
     "/profile/{username}",
@@ -857,19 +729,6 @@ async def get_public_profile(
     profile_res = await db.execute(select(UserProfile).filter_by(user_id=user.id))
     profile = profile_res.scalar_one_or_none()
 
-    stats_res = await db.execute(select(UserStats).filter_by(user_id=user.id))
-    stats = stats_res.scalar_one_or_none()
-
-    heatmap_res = await db.execute(
-        select(DailyActivity)
-        .filter_by(user_id=user.id)
-        .order_by(DailyActivity.activity_date.desc())
-        .limit(365)
-    )
-    heatmap = heatmap_res.scalars().all()
-
-    skills_res = await db.execute(select(UserSkillScore).filter_by(user_id=user.id))
-    skills = skills_res.scalars().all()
 
     ach_res = await db.execute(
         select(Achievement, UserAchievement.earned_at)
@@ -882,13 +741,6 @@ async def get_public_profile(
         for a, earned_at in ach_res.all()
     ]
 
-    events_res = await db.execute(
-        select(LearningEvent)
-        .filter_by(user_id=user.id)
-        .order_by(LearningEvent.created_at.desc())
-        .limit(10)
-    )
-    recent_activity = events_res.scalars().all()
 
     response_data = {
         "username": user.username,
@@ -906,45 +758,7 @@ async def get_public_profile(
         "preferred_language": profile.preferred_language if profile else None,
         "resume_url": profile.resume_url if profile else None,
 
-        "stats": {
-            "problems_solved_total": stats.problems_solved_total if stats else 0,
-            "problems_solved_easy": stats.problems_solved_easy if stats else 0,
-            "problems_solved_medium": stats.problems_solved_medium if stats else 0,
-            "problems_solved_hard": stats.problems_solved_hard if stats else 0,
-            "total_submissions": stats.total_submissions if stats else 0,
-            "acceptance_rate": stats.acceptance_rate if stats else 0.0,
-            "interviews_completed": stats.interviews_completed if stats else 0,
-            "avg_interview_score": stats.avg_interview_score if stats else 0.0,
-            "best_interview_score": stats.best_interview_score if stats else 0,
-            "current_streak": stats.current_streak if stats else 0,
-            "longest_streak": stats.longest_streak if stats else 0,
-            "last_activity_date": stats.last_activity_date.isoformat() if stats and stats.last_activity_date else None,
-            "rating": stats.rating if stats else 0,
-        },
-        "heatmap": [
-            {
-                "activity_date": h.activity_date.isoformat(),
-                "problems_solved": h.problems_solved,
-                "problems_attempted": h.problems_attempted,
-                "submissions_count": h.submissions_count,
-                "interviews_done": h.interviews_done,
-                "study_minutes": h.study_minutes,
-            } for h in heatmap
-        ],
-        "skills": [
-            {"domain": s.domain, "score": s.score, "problems_solved": s.problems_solved, "interviews_done": s.interviews_done}
-            for s in skills
-        ],
-        "achievements": achievements,
-        "recent_activity": [
-            {
-                "event_type": e.event_type,
-                "reference_id": e.reference_id,
-                "score_change": e.score_change,
-                "domain": e.domain,
-                "metadata_json": e.metadata_json,
-                "created_at": e.created_at.isoformat(),
-            } for e in recent_activity
+        "
         ],
     }
 

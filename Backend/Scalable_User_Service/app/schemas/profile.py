@@ -80,12 +80,6 @@ class FullUserProfileResponse(BaseModel):
     preferred_language: str | None = None
     resume_url: str | None = None
 
-    stats: UserStatsResponse
-    heatmap: list[DailyActivityResponse] = []
-    skills: list[SkillResponse] = []
-    achievements: list[AchievementResponse] = []
-    recent_activity: list[LearningEventResponse] = []
-
     model_config = ConfigDict(from_attributes=True)
 
 class PublicUserProfileResponse(BaseModel):
@@ -103,12 +97,6 @@ class PublicUserProfileResponse(BaseModel):
     institution: str | None = None
     preferred_language: str | None = None
     resume_url: str | None = None
-
-    stats: UserStatsResponse
-    heatmap: list[DailyActivityResponse] = []
-    skills: list[SkillResponse] = []
-    achievements: list[AchievementResponse] = []
-    recent_activity: list[LearningEventResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
 

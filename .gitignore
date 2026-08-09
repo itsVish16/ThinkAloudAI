@@ -105,8 +105,5 @@ sol
 *.cpp
 bugs.md
 BUGS_AND_ISSUES.md
-.agents/
 alter_db.py
 inject_*.py
-
-Frontend/
