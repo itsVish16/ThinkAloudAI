@@ -40,17 +40,9 @@ async def lifespan(app: FastAPI):
     logger.info("Starting up — initializing connections")
     await get_redis()
 
-    # Start the background event consumer
-    from app.services.event_consumer import event_consumer_loop
-
-    consumer_task = asyncio.create_task(event_consumer_loop())
-
     yield
 
     logger.info("Shutting down — cleaning up connections")
-    consumer_task.cancel()
-    with contextlib.suppress(asyncio.CancelledError):
-        await consumer_task
 
     await close_redis()
     await engine.dispose()

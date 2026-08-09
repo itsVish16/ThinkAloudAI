@@ -37,10 +37,12 @@ async def verify_password(plain_password: str, password_hash: str) -> bool:
     return await anyio.to_thread.run_sync(_verify_password_sync, plain_password, password_hash, limiter=_bcrypt_limiter)
 
 
-def create_access_token(subject: str) -> str:
+def create_access_token(subject: str, username: str = "", email: str = "") -> str:
     expire = datetime.now(UTC) + timedelta(minutes=settings.access_token_expire_minutes)
     payload = {
         "sub": subject,
+        "username": username,
+        "email": email,
         "type": "access",
         "exp": expire,
         "iat": datetime.now(UTC),
@@ -50,10 +52,12 @@ def create_access_token(subject: str) -> str:
     return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
 
 
-def create_refresh_token(subject: str) -> str:
+def create_refresh_token(subject: str, username: str = "", email: str = "") -> str:
     expire = datetime.now(UTC) + timedelta(minutes=settings.refresh_token_expire_minutes)
     payload = {
         "sub": subject,
+        "username":username,
+        "email":email,
         "type": "refresh",
         "exp": expire,
         "iat": datetime.now(UTC),
