@@ -160,10 +160,10 @@ STAGE_PROMPTS.update({
 })
 
 EVALUATOR_RULES = {
-    "intro_audio_check": "Advance ONLY when the candidate clearly confirms they can hear you.",
-    "intro_agenda": "Advance after candidate agrees to the agenda.",
-    "intro_candidate": "Advance when the candidate gives an introduction and you have asked/acknowledged one follow-up.",
-    "intro_editor": "Advance when the candidate acknowledges the editor.",
+    "intro_audio_check": "Advance when the candidate confirms they can hear you, or if they greet you back.",
+    "intro_agenda": "Advance after candidate agrees to the agenda, or if the conversation moves forward.",
+    "intro_candidate": "Advance when the candidate gives an introduction.",
+    "intro_editor": "Advance immediately to the next stage.",
     
     "dsa_presentation": "Advance to dsa_approach when the candidate begins describing HOW they would solve it. Do not advance if they are just reading or clarifying.",
     "dsa_approach": "Advance to dsa_coding when the candidate has stated an approach AND the interviewer told them to start coding.",

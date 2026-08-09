@@ -1,0 +1,12 @@
+/* Reset Tailwind SVG rules inside Excalidraw */
+.excalidraw svg {
+  display: initial;
+  max-width: none;
+  height: initial;
+}
+/* Re-apply some Excalidraw-specific fixes */
+.excalidraw .ToolIcon__icon svg, 
+.excalidraw .FixedSideContainer svg {
+  width: 100%;
+  height: 100%;
+}

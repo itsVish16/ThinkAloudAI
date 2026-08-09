@@ -322,8 +322,7 @@ async def entrypoint(ctx: agents.JobContext):
     if speechmatics_key and not speechmatics_key.startswith("<"):
         logger.info("Initializing Speechmatics STT and TTS")
         stt = speechmatics.STT(
-            turn_detection_mode=TurnDetectionMode.ADAPTIVE,
-            end_of_utterance_silence_trigger=0.5,
+            language="en"
         )
         tts = speechmatics.TTS()
     else:
