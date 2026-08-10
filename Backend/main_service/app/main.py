@@ -11,6 +11,7 @@ from app.routes.behavioral import router as behavioral_router
 from app.routes.pm import router as pm_router
 from app.routes.aiml import router as aiml_router
 from app.routes.admin import router as admin_router
+from app.routes.dashboard import router as dashboard_router
 from app.database import Base, engine
 from app.config import settings
 # Import ALL models so SQLAlchemy registers them for create_all()
@@ -21,9 +22,11 @@ from app.models.roadmap import Roadmap, RoadmapTopic, RoadmapItem
 from app.models.behavioral import BehavioralQuestion
 from app.models.product_management import PMQuestion
 from app.models.aiml import AIMLQuestion
+from app.models.analytics import UserStats, DailyActivity, UserSkillScore, LearningEvent
 
 import asyncio
 from app.services.chat_batcher import start_chat_batch_writer
+from app.services.event_consumer import start_event_consumer
 
 
 from sqlalchemy import text
@@ -68,12 +71,14 @@ async def lifespan(app: FastAPI):
                 ('Metric Drop: Instagram', 'You are the PM for Instagram Stories. You notice a 15% drop in daily story creations over the last week. How would you investigate this?', 'Execution', NOW()),
                 ('Design Uber for Kids', 'Design a ride-sharing service specifically tailored for unaccompanied minors. Who is the primary user, what are the safety considerations, and how do you go to market?', 'Strategy', NOW());
             """))
+    consumer_task = asyncio.create_task(start_event_consumer())
     chat_batcher_task = asyncio.create_task(start_chat_batch_writer())
     yield
     # Shutdown: cancel background tasks
+    consumer_task.cancel()
     chat_batcher_task.cancel()
     try:
-        await asyncio.gather(chat_batcher_task, return_exceptions=True)
+        await asyncio.gather(consumer_task, chat_batcher_task, return_exceptions=True)
     except asyncio.CancelledError:
         pass
 
@@ -105,6 +110,7 @@ app.include_router(behavioral_router)
 app.include_router(pm_router)
 app.include_router(aiml_router)
 app.include_router(admin_router)
+app.include_router(dashboard_router)
 
 @app.get("/")
 async def root():
