@@ -35,8 +35,6 @@ class Config:
         return origins or ["http://localhost:5173"]
 
     # Database & Events
-    # NOTE: Postgres default matches the unified docker stack; the SQLite fallback
-    # was removed to avoid silently storing interview data in the wrong place.
     DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://thinkaloud:thinkaloud_dev@localhost:5432/interviewer_service")
     REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/2")
 

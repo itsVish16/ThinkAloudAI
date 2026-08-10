@@ -54,22 +54,30 @@ The goal is to build a production-quality platform with clean architecture, exce
 
 # Architecture
 
-Always follow a layered architecture.
+The backend is built as a **Microservices Architecture** comprising three core services:
+
+1. **Scalable_User_Service**: Handles authentication, JWT token minting, user profiles, and achievements. Uses PostgreSQL and Redis (caching, pub/sub).
+2. **main_service**: Manages core platform features including DSA execution (via E2B), System Design LLM evaluations, behavioral/PM questions, and study roadmaps.
+3. **AI_Interviewer**: A real-time voice agent service powered by LiveKit, LangGraph, and RabbitMQ for asynchronous post-interview analysis.
+
+## Layering
+
+Always follow a layered architecture within each service:
 
 ```
-API
+API (Routes)
 ↓
-Service
+Service (Business Logic)
 ↓
-Repository
+Repository (Database Queries)
 ↓
 Database
 ```
 
-Never place business logic inside API routes.
+**CRITICAL**: Never place business logic inside API routes. 
+*(Note: We are actively refactoring legacy routes like `chat.py`, `dsa.py`, and `user.py` to adhere strictly to this pattern).*
 
 Routes should only:
-
 - Validate input
 - Call services
 - Return response
