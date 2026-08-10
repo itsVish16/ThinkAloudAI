@@ -10,18 +10,13 @@ from app.database import get_db
 from app.auth import verify_jwt
 from app.models.dsa import CodeSubmission, DSAQuestion
 from app.models.roadmap import Roadmap
-from app.models.user_replica import UserProfileReplica as UserReplica
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 async def require_admin(payload: dict = Depends(verify_jwt), db: AsyncSession = Depends(get_db)) -> dict:
     user_id = payload.get("sub")
-    
-    # Get user email from replica
-    result = await db.execute(select(UserReplica).filter(UserReplica.id == user_id))
-    user_replica = result.scalar_one_or_none()
-    
-    email = user_replica.email if user_replica else None
+    # Get user email directly from JWT
+    email = payload.get("email")
     
     if not email and payload.get("raw_token"):
         import httpx

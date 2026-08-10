@@ -5,7 +5,6 @@ from sqlalchemy.future import select
 from sqlalchemy import or_, and_
 from app.database import get_db
 from app.models.dsa import CodeSubmission
-from app.models.user_replica import UserProfileReplica
 from app.schemas.user import UserProfileResponse, SubmissionSummary
 from app.auth import verify_jwt
 
@@ -27,12 +26,8 @@ async def get_user_profile(
     if not user_uuid:
         raise HTTPException(status_code=400, detail="Invalid token payload: 'sub' missing")
 
-    # Look up user email from the replica table (populated by the event consumer)
-    replica_result = await db.execute(
-        select(UserProfileReplica).filter(UserProfileReplica.id == str(user_uuid))
-    )
-    replica = replica_result.scalars().first()
-    email = replica.email if replica else None
+    # Extract user email from the JWT payload directly
+    email = payload.get("email")
 
     # Build OR filter: match by UUID or email (DSAPractice stores email as session_id)
     # Also ensure we only fetch actual submissions, not runs

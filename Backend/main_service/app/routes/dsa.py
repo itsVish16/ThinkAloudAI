@@ -143,21 +143,8 @@ async def run_solution(
     db.add(submission)
     await db.commit()
     
-    # Invalidate profile cache
-    try:
-        from app.models.user_replica import UserProfileReplica
-        replica_res = await db.execute(
-            select(UserProfileReplica).filter(UserProfileReplica.id == request.session_id)
-        )
-        replica = replica_res.scalars().first()
-        
-        await redis.delete(f"users:profile:{request.session_id}")
-        if replica:
-            await redis.delete(f"users:profile:{replica.id}")
-            if replica.email:
-                await redis.delete(f"users:profile:{replica.email}")
-    except Exception:
-        pass
+    # Cache invalidation is handled by the user service
+    pass
         
     return CodeSubmitResponse(**docker_result)
 
@@ -198,37 +185,14 @@ async def submit_solution(
     db.add(submission)
     await db.commit()
     
-    # Invalidate profile cache
-    try:
-        from app.models.user_replica import UserProfileReplica
-        replica_res = await db.execute(
-            select(UserProfileReplica).filter(UserProfileReplica.id == request.session_id)
-        )
-        replica = replica_res.scalars().first()
-        
-        await redis.delete(f"users:profile:{request.session_id}")
-        if replica:
-            await redis.delete(f"users:profile:{replica.id}")
-            if replica.email:
-                await redis.delete(f"users:profile:{replica.email}")
-    except Exception:
-        pass
+    # Invalidate profile cache handled by user service
+    pass
     
     if docker_result["status"] == "Accepted":
         from app.services.event_bus import publish_event
-        from app.models.user_replica import UserProfileReplica
         
-        replica_result = await db.execute(
-            select(UserProfileReplica).filter(UserProfileReplica.id == request.session_id)
-        )
-        replica = replica_result.scalars().first()
-        
-        if replica:
-            resolved_user_id = int(replica.id)
-        elif request.session_id.isdigit():
-            resolved_user_id = int(request.session_id)
-        else:
-            resolved_user_id = None
+        # User ID is passed as session_id directly from the frontend if authenticated
+        resolved_user_id = int(request.session_id) if request.session_id.isdigit() else None
         
         async def fire_event():
             try:

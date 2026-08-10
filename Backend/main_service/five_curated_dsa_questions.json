@@ -1,0 +1,82 @@
+[
+    {
+        "title": "Two Sum",
+        "description": "Given an array of integers `nums` and an integer `target`, return *indices of the two numbers such that they add up to `target`*.\n\nYou may assume that each input would have ***exactly one solution***, and you may not use the *same* element twice.\n\nYou can return the answer in any order.\n\n## Examples\n\n**Example 1:**\n- **Input:** `nums = [2,7,11,15]`, `target = 9`\n- **Output:** `[0,1]`\n- **Explanation:** Because `nums[0] + nums[1] == 9`, we return `[0, 1]`.\n\n**Example 2:**\n- **Input:** `nums = [3,2,4]`, `target = 6`\n- **Output:** `[1,2]`\n\n**Example 3:**\n- **Input:** `nums = [3,3]`, `target = 6`\n- **Output:** `[0,1]`\n\n## Constraints\n- `2 <= nums.length <= 10^4`\n- `-10^9 <= nums[i] <= 10^9`\n- `-10^9 <= target <= 10^9`\n- **Only one valid answer exists.**",
+        "difficulty": "Easy",
+        "function_name": "twoSum",
+        "python_starter_code": "class Solution:\n    def twoSum(self, nums: List[int], target: int) -> List[int]:\n        # Implement your solution here\n        pass",
+        "cpp_starter_code": "class Solution {\npublic:\n    vector<int> twoSum(vector<int>& nums, int target) {\n        // Implement your solution here\n    }\n};",
+        "cpp_test_harness": "#include <iostream>\n#include <vector>\n#include <string>\n#include <sstream>\n#include <algorithm>\nusing namespace std;\n\nvector<int> parseVectorInt(const string& s) {\n    vector<int> res;\n    string temp = s;\n    temp.erase(remove(temp.begin(), temp.end(), '['), temp.end());\n    temp.erase(remove(temp.begin(), temp.end(), ']'), temp.end());\n    temp.erase(remove(temp.begin(), temp.end(), ' '), temp.end());\n    stringstream ss(temp);\n    string item;\n    while(getline(ss, item, ',')) {\n        if(!item.empty()) res.push_back(stoi(item));\n    }\n    return res;\n}\n\n{{user_code}}\n\nint main() {\n    string nums_str;\n    if (!getline(cin >> ws, nums_str)) return 0;\n    vector<int> nums = parseVectorInt(nums_str);\n    int target;\n    if (!(cin >> target)) return 0;\n    Solution sol;\n    vector<int> res = sol.twoSum(nums, target);\n    cout << \"[\";\n    for(size_t i=0; i<res.size(); ++i) cout << res[i] << (i==res.size()-1 ? \"\" : \",\");\n    cout << \"]\" << endl;\n    return 0;\n}\n",
+        "test_cases": "{\"function_name\": \"twoSum\", \"params\": [{\"name\": \"nums\", \"type\": \"int[]\"}, {\"name\": \"target\", \"type\": \"int\"}], \"return_type\": \"int[]\", \"comparison\": \"exact\", \"cases\": [{\"args\": {\"nums\": [2, 7, 11, 15], \"target\": 9}, \"expected\": [0, 1]}, {\"args\": {\"nums\": [3, 2, 4], \"target\": 6}, \"expected\": [1, 2]}, {\"args\": {\"nums\": [3, 3], \"target\": 6}, \"expected\": [0, 1]}, {\"args\": {\"nums\": [-1, -8, 0, 5], \"target\": -3}, \"expected\": [0, 1]}, {\"args\": {\"nums\": [1, 5, 8, 3], \"target\": 11}, \"expected\": [2, 3]}]}",
+        "hints": [
+            "A brute force approach checks all pairs of numbers in O(N^2) time.",
+            "Can we use a hash map to store seen elements and lookup target - current in O(1) time?"
+        ],
+        "optimal_time_complexity": "O(N)",
+        "optimal_space_complexity": "O(N)"
+    },
+    {
+        "title": "Valid Parentheses",
+        "description": "Given a string `s` containing just the characters `'('`, `')'`, `'{'`, `'}'`, `'['` and `']'`, determine if the input string is valid.\n\nAn input string is valid if:\n1. Open brackets must be closed by the same type of brackets.\n2. Open brackets must be closed in the correct order.\n3. Every close bracket has a corresponding open bracket of the same type.\n\n## Examples\n\n**Example 1:**\n- **Input:** `s = \"()\"`\n- **Output:** `true`\n\n**Example 2:**\n- **Input:** `s = \"()[]{}\"`\n- **Output:** `true`\n\n**Example 3:**\n- **Input:** `s = \"(]\"`\n- **Output:** `false`\n\n**Example 4:**\n- **Input:** `s = \"([])\"`\n- **Output:** `true`\n\n## Constraints\n- `1 <= s.length <= 10^4`\n- `s` consists of parentheses only `'()[]{}'`.",
+        "difficulty": "Easy",
+        "function_name": "isValid",
+        "python_starter_code": "class Solution:\n    def isValid(self, s: str) -> bool:\n        # Implement your solution here\n        pass",
+        "cpp_starter_code": "class Solution {\npublic:\n    bool isValid(string s) {\n        // Implement your solution here\n    }\n};",
+        "cpp_test_harness": "#include <iostream>\n#include <vector>\n#include <string>\n#include <sstream>\n#include <algorithm>\nusing namespace std;\n\n{{user_code}}\n\nint main() {\n    string s;\n    if (!(cin >> s)) return 0;\n    Solution sol;\n    bool res = sol.isValid(s);\n    cout << (res ? \"true\" : \"false\") << endl;\n    return 0;\n}\n",
+        "test_cases": "{\"function_name\": \"isValid\", \"params\": [{\"name\": \"s\", \"type\": \"string\"}], \"return_type\": \"boolean\", \"comparison\": \"exact\", \"cases\": [{\"args\": {\"s\": \"()\"}, \"expected\": true}, {\"args\": {\"s\": \"()[]{}\"}, \"expected\": true}, {\"args\": {\"s\": \"(]\"}, \"expected\": false}, {\"args\": {\"s\": \"([])\"}, \"expected\": true}, {\"args\": {\"s\": \"([)]\"}, \"expected\": false}]}",
+        "hints": [
+            "Use a stack data structure to keep track of opening brackets.",
+            "When encountering a closing bracket, check if it matches the top of the stack."
+        ],
+        "optimal_time_complexity": "O(N)",
+        "optimal_space_complexity": "O(N)"
+    },
+    {
+        "title": "Longest Substring Without Repeating Characters",
+        "description": "Given a string `s`, find the length of the **longest substring** without repeating characters.\n\n## Examples\n\n**Example 1:**\n- **Input:** `s = \"abcabcbb\"`\n- **Output:** `3`\n- **Explanation:** The answer is `\"abc\"`, with the length of 3.\n\n**Example 2:**\n- **Input:** `s = \"bbbbb\"`\n- **Output:** `1`\n- **Explanation:** The answer is `\"b\"`, with the length of 1.\n\n**Example 3:**\n- **Input:** `s = \"pwwkew\"`\n- **Output:** `3`\n- **Explanation:** The answer is `\"wke\"`, with the length of 3. Notice that the answer must be a substring, `\"pwke\"` is a subsequence and not a substring.\n\n## Constraints\n- `0 <= s.length <= 5 * 10^4`\n- `s` consists of English letters, digits, symbols and spaces.",
+        "difficulty": "Medium",
+        "function_name": "lengthOfLongestSubstring",
+        "python_starter_code": "class Solution:\n    def lengthOfLongestSubstring(self, s: str) -> int:\n        # Implement your solution here\n        pass",
+        "cpp_starter_code": "class Solution {\npublic:\n    int lengthOfLongestSubstring(string s) {\n        // Implement your solution here\n    }\n};",
+        "cpp_test_harness": "#include <iostream>\n#include <vector>\n#include <string>\n#include <sstream>\n#include <algorithm>\nusing namespace std;\n\n{{user_code}}\n\nint main() {\n    string s;\n    if (!getline(cin >> ws, s)) s = \"\";\n    Solution sol;\n    int res = sol.lengthOfLongestSubstring(s);\n    cout << res << endl;\n    return 0;\n}\n",
+        "test_cases": "{\"function_name\": \"lengthOfLongestSubstring\", \"params\": [{\"name\": \"s\", \"type\": \"string\"}], \"return_type\": \"int\", \"comparison\": \"exact\", \"cases\": [{\"args\": {\"s\": \"abcabcbb\"}, \"expected\": 3}, {\"args\": {\"s\": \"bbbbb\"}, \"expected\": 1}, {\"args\": {\"s\": \"pwwkew\"}, \"expected\": 3}, {\"args\": {\"s\": \"\"}, \"expected\": 0}, {\"args\": {\"s\": \"au\"}, \"expected\": 2}, {\"args\": {\"s\": \"dvdf\"}, \"expected\": 3}]}",
+        "hints": [
+            "Use a sliding window technique with two pointers.",
+            "Store character indices in a set or hash map to quickly jump the left pointer."
+        ],
+        "optimal_time_complexity": "O(N)",
+        "optimal_space_complexity": "O(min(N, M))"
+    },
+    {
+        "title": "Container With Most Water",
+        "description": "You are given an integer array `height` of length `n`. There are `n` vertical lines drawn such that the two endpoints of the `i^{th}` line are `(i, 0)` and `(i, height[i])`.\n\nFind two lines that together with the x-axis form a container, such that the container contains the most water.\n\nReturn *the maximum amount of water a container can store*.\n\n**Notice** that you may not slant the container.\n\n## Examples\n\n**Example 1:**\n- **Input:** `height = [1,8,6,2,5,4,8,3,7]`\n- **Output:** `49`\n- **Explanation:** The vertical lines are represented by array `[1,8,6,2,5,4,8,3,7]`. In this case, the max area of water the container can contain is 49.\n\n**Example 2:**\n- **Input:** `height = [1,1]`\n- **Output:** `1`\n\n## Constraints\n- `n == height.length`\n- `2 <= n <= 10^5`\n- `0 <= height[i] <= 10^4`",
+        "difficulty": "Medium",
+        "function_name": "maxArea",
+        "python_starter_code": "class Solution:\n    def maxArea(self, height: List[int]) -> int:\n        # Implement your solution here\n        pass",
+        "cpp_starter_code": "class Solution {\npublic:\n    int maxArea(vector<int>& height) {\n        // Implement your solution here\n    }\n};",
+        "cpp_test_harness": "#include <iostream>\n#include <vector>\n#include <string>\n#include <sstream>\n#include <algorithm>\nusing namespace std;\n\nvector<int> parseVectorInt(const string& s) {\n    vector<int> res;\n    string temp = s;\n    temp.erase(remove(temp.begin(), temp.end(), '['), temp.end());\n    temp.erase(remove(temp.begin(), temp.end(), ']'), temp.end());\n    temp.erase(remove(temp.begin(), temp.end(), ' '), temp.end());\n    stringstream ss(temp);\n    string item;\n    while(getline(ss, item, ',')) {\n        if(!item.empty()) res.push_back(stoi(item));\n    }\n    return res;\n}\n\n{{user_code}}\n\nint main() {\n    string height_str;\n    if (!getline(cin >> ws, height_str)) return 0;\n    vector<int> height = parseVectorInt(height_str);\n    Solution sol;\n    int res = sol.maxArea(height);\n    cout << res << endl;\n    return 0;\n}\n",
+        "test_cases": "{\"function_name\": \"maxArea\", \"params\": [{\"name\": \"height\", \"type\": \"int[]\"}], \"return_type\": \"int\", \"comparison\": \"exact\", \"cases\": [{\"args\": {\"height\": [1, 8, 6, 2, 5, 4, 8, 3, 7]}, \"expected\": 49}, {\"args\": {\"height\": [1, 1]}, \"expected\": 1}, {\"args\": {\"height\": [4, 3, 2, 1, 4]}, \"expected\": 16}, {\"args\": {\"height\": [1, 2, 1]}, \"expected\": 2}]}",
+        "hints": [
+            "Start with pointers at both ends of the array.",
+            "Move the pointer pointing to the shorter line inward to try to find a taller line."
+        ],
+        "optimal_time_complexity": "O(N)",
+        "optimal_space_complexity": "O(1)"
+    },
+    {
+        "title": "Merge Intervals",
+        "description": "Given an array of `intervals` where `intervals[i] = [start_i, end_i]`, merge all overlapping intervals, and return *an array of the non-overlapping intervals that cover all the intervals in the input*.\n\n## Examples\n\n**Example 1:**\n- **Input:** `intervals = [[1,3],[2,6],[8,10],[15,18]]`\n- **Output:** `[[1,6],[8,10],[15,18]]`\n- **Explanation:** Since intervals `[1,3]` and `[2,6]` overlap, merge them into `[1,6]`.\n\n**Example 2:**\n- **Input:** `intervals = [[1,4],[4,5]]`\n- **Output:** `[[1,5]]`\n- **Explanation:** Intervals `[1,4]` and `[4,5]` are considered overlapping.\n\n## Constraints\n- `1 <= intervals.length <= 10^4`\n- `intervals[i].length == 2`\n- `0 <= start_i <= end_i <= 10^4`",
+        "difficulty": "Medium",
+        "function_name": "merge",
+        "python_starter_code": "class Solution:\n    def merge(self, intervals: List[List[int]]) -> List[List[int]]:\n        # Implement your solution here\n        pass",
+        "cpp_starter_code": "class Solution {\npublic:\n    vector<vector<int>> merge(vector<vector<int>>& intervals) {\n        // Implement your solution here\n    }\n};",
+        "cpp_test_harness": "#include <iostream>\n#include <vector>\n#include <string>\n#include <sstream>\n#include <algorithm>\nusing namespace std;\n\nvector<vector<int>> parseVectorVectorInt(const string& s) {\n    vector<vector<int>> res;\n    size_t i = 0;\n    while (i < s.size()) {\n        if (s[i] == '[') {\n            size_t end = s.find(']', i);\n            if (end != string::npos) {\n                string sub = s.substr(i + 1, end - i - 1);\n                if (!sub.empty() && sub.find('[') == string::npos) {\n                    vector<int> row;\n                    stringstream ss(sub);\n                    string item;\n                    while (getline(ss, item, ',')) {\n                        if (!item.empty()) row.push_back(stoi(item));\n                    }\n                    res.push_back(row);\n                }\n            }\n        }\n        i++;\n    }\n    return res;\n}\n\n{{user_code}}\n\nint main() {\n    string intervals_str;\n    if (!getline(cin >> ws, intervals_str)) return 0;\n    vector<vector<int>> intervals = parseVectorVectorInt(intervals_str);\n    Solution sol;\n    vector<vector<int>> res = sol.merge(intervals);\n    cout << \"[\";\n    for (size_t i = 0; i < res.size(); ++i) {\n        cout << \"[\";\n        for (size_t j = 0; j < res[i].size(); ++j) {\n            cout << res[i][j] << (j == res[i].size() - 1 ? \"\" : \",\");\n        }\n        cout << \"]\" << (i == res.size() - 1 ? \"\" : \",\");\n    }\n    cout << \"]\" << endl;\n    return 0;\n}\n",
+        "test_cases": "{\"function_name\": \"merge\", \"params\": [{\"name\": \"intervals\", \"type\": \"int[][]\"}], \"return_type\": \"int[][]\", \"comparison\": \"exact\", \"cases\": [{\"args\": {\"intervals\": [[1, 3], [2, 6], [8, 10], [15, 18]]}, \"expected\": [[1, 6], [8, 10], [15, 18]]}, {\"args\": {\"intervals\": [[1, 4], [4, 5]]}, \"expected\": [[1, 5]]}, {\"args\": {\"intervals\": [[1, 4], [0, 4]]}, \"expected\": [[0, 4]]}, {\"args\": {\"intervals\": [[1, 4], [2, 3]]}, \"expected\": [[1, 4]]}]}",
+        "hints": [
+            "Sort the intervals by their start times first.",
+            "Iterate through sorted intervals and merge with the last interval in your output if they overlap."
+        ],
+        "optimal_time_complexity": "O(N log N)",
+        "optimal_space_complexity": "O(N)"
+    }
+]
