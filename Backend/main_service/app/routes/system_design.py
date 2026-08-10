@@ -10,6 +10,7 @@ from app.config import settings
 from app.models.system_design import SystemDesignQuestion
 from app.schemas.system_design import SystemDesignQuestionCreate, SystemDesignQuestionOut
 from redis.asyncio import Redis
+from app.auth import verify_jwt
 from langchain_core.messages import SystemMessage, HumanMessage
 
 router = APIRouter(prefix="/system-design", tags=["System Design Questions"])
@@ -179,7 +180,7 @@ async def evaluate_system_design(question_title: str, question_description: str,
         )
 
 
-@router.post("/questions/{question_id}/submit", response_model=SystemDesignSubmitResponse)
+@router.post("/questions/{question_id}/submit", response_model=SystemDesignSubmitResponse, dependencies=[Depends(verify_jwt)])
 async def submit_system_design(question_id: int, request: SystemDesignSubmitRequest, db: AsyncSession = Depends(get_db)):
     """
     Submit an answer for a System Design question and receive an LLM evaluation

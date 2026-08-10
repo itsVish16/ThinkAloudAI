@@ -5,6 +5,7 @@ from typing import List, Optional
 import asyncio
 
 from app.database import get_db, get_redis
+from app.auth import verify_jwt
 from app.models.dsa import DSAQuestion, CodeSubmission
 from app.schemas.dsa import DSAQuestionCreate, DSAQuestionOut, CodeSubmitRequest, CodeSubmitResponse, CodeSubmissionOut
 
@@ -106,7 +107,7 @@ async def get_latest_submission(
     result = await db.execute(query)
     return result.scalars().first()
 
-@router.post("/questions/{question_id}/run", response_model=CodeSubmitResponse)
+@router.post("/questions/{question_id}/run", response_model=CodeSubmitResponse, dependencies=[Depends(verify_jwt)])
 async def run_solution(
     question_id: int, 
     request: CodeSubmitRequest, 
@@ -151,7 +152,7 @@ async def run_solution(
         memory_used_kb=0.0
     )
 
-@router.post("/questions/{question_id}/submit", response_model=CodeSubmitResponse)
+@router.post("/questions/{question_id}/submit", response_model=CodeSubmitResponse, dependencies=[Depends(verify_jwt)])
 async def submit_solution(
     question_id: int, 
     request: CodeSubmitRequest, 
@@ -209,7 +210,7 @@ async def stream_submission_status(submission_id: int):
     from app.config import settings
 
     async def event_generator():
-        redis_client = aioredis.from_url(settings.REDIS_URL if hasattr(settings, 'REDIS_URL') else "redis://localhost:6379")
+        redis_client = aioredis.from_url(settings.UPSTASH_REDIS_URL)
         pubsub = redis_client.pubsub()
         await pubsub.subscribe(f"submission_updates_{submission_id}")
 

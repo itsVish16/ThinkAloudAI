@@ -47,6 +47,7 @@ class InterviewAgent(Agent):
         self.candidate_name = candidate_name
         self.user_id = user_id
         self.interview_type = interview_type
+        self.turn_lock = asyncio.Lock()
         
         # Build the dynamic graph based on the interview type
         self.interview_agent = build_graph(self.interview_type)
@@ -221,10 +222,11 @@ class InterviewAgent(Agent):
             self.state["latest_execution"] = self.latest_execution
             self.state["ai_selected_questions"] = self.ai_selected_questions
 
-            # Run state graph (this streams LLM tokens into the queue)
-            # This now ONLY runs generate_response sequentially
-            updated_state = await self.interview_agent.ainvoke(self.state)
-            self.state = updated_state
+            async with self.turn_lock:
+                # Run state graph (this streams LLM tokens into the queue)
+                # This now ONLY runs generate_response sequentially
+                updated_state = await self.interview_agent.ainvoke(self.state)
+                self.state = updated_state
 
             # Persist state after each turn to ensure transcript is never lost
             state_to_save = self.state.copy()
@@ -500,14 +502,15 @@ async def entrypoint(ctx: agents.JobContext):
                     
             if agent_instance.state.get("stage") in core_stages:
                 try:
-                    updated_state = await agent_instance.interview_agent.ainvoke(agent_instance.state)
-                    agent_instance.state = updated_state
-                    
-                    # Get the last assistant message
-                    assistant_messages = [msg for msg in agent_instance.state["messages"] if msg["role"] == "assistant"]
-                    if assistant_messages:
-                        last_msg = assistant_messages[-1]["content"]
-                        await session_instance.say(last_msg)
+                    async with agent_instance.turn_lock:
+                        updated_state = await agent_instance.interview_agent.ainvoke(agent_instance.state)
+                        agent_instance.state = updated_state
+                        
+                        # Get the last assistant message
+                        assistant_messages = [msg for msg in agent_instance.state["messages"] if msg["role"] == "assistant"]
+                        if assistant_messages:
+                            last_msg = assistant_messages[-1]["content"]
+                            await session_instance.say(last_msg)
                         
                 except Exception as e:
                     logger.error(f"Error in silence monitor task: {e}")

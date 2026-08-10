@@ -9,8 +9,9 @@ from app.database import get_db, get_redis
 from app.models.aiml import AIMLQuestion
 from app.schemas.aiml import AIMLQuestionCreate, AIMLQuestionOut
 from redis.asyncio import Redis
+from app.auth import verify_jwt
 
-router = APIRouter(prefix="/aiml", tags=["AI/ML Questions"])
+router = APIRouter(prefix="/aiml", tags=["AI/ML Questions"], dependencies=[Depends(verify_jwt)])
 
 @router.post("/seed")
 async def seed_questions(db: AsyncSession = Depends(get_db), redis=Depends(get_redis)):
