@@ -118,35 +118,38 @@ async def run_solution(
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
         
-    from app.services.docker_runner import run_code_in_docker
-    
-    import asyncio
-    # Run the synchronous E2B blocking call in a separate thread pool
-    docker_result = await asyncio.to_thread(
-        run_code_in_docker,
-        code=request.code,
-        function_name=question.function_name,
-        test_cases_json=question.test_cases,
-        language=request.language,
-        test_harness=question.cpp_test_harness
-    )
+    from app.services.mq_producer import publish_execution_task
     
     submission = CodeSubmission(
         session_id=request.session_id,
         question_id=question_id,
         code=request.code,
         language=request.language,
-        status=docker_result["status"],
-        error_message=docker_result.get("error_message"),
+        status="Pending",
         is_submission=False
     )
     db.add(submission)
     await db.commit()
+    await db.refresh(submission)
     
-    # Cache invalidation is handled by the user service
-    pass
+    task_data = {
+        "submission_id": submission.id,
+        "code": request.code,
+        "language": request.language,
+        "function_name": question.function_name,
+        "test_cases_json": question.test_cases,
+        "test_harness": question.cpp_test_harness
+    }
+    await publish_execution_task(task_data)
         
-    return CodeSubmitResponse(**docker_result)
+    return CodeSubmitResponse(
+        status="Pending",
+        output=f"Execution queued with ID: {submission.id}",
+        passed_tests=0,
+        total_tests=0,
+        execution_time_ms=0.0,
+        memory_used_kb=0.0
+    )
 
 @router.post("/questions/{question_id}/submit", response_model=CodeSubmitResponse)
 async def submit_solution(
@@ -161,61 +164,74 @@ async def submit_solution(
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
         
-    from app.services.docker_runner import run_code_in_docker
-    
-    import asyncio
-    docker_result = await asyncio.to_thread(
-        run_code_in_docker,
-        code=request.code,
-        function_name=question.function_name,
-        test_cases_json=question.test_cases,
-        language=request.language,
-        test_harness=question.cpp_test_harness
-    )
+    from app.services.mq_producer import publish_execution_task
     
     submission = CodeSubmission(
         session_id=request.session_id,
         question_id=question_id,
         code=request.code,
         language=request.language,
-        status=docker_result["status"],
-        error_message=docker_result.get("error_message"),
+        status="Pending",
         is_submission=True
     )
     db.add(submission)
     await db.commit()
+    await db.refresh(submission)
     
-    # Invalidate profile cache handled by user service
-    pass
+    task_data = {
+        "submission_id": submission.id,
+        "code": request.code,
+        "language": request.language,
+        "function_name": question.function_name,
+        "test_cases_json": question.test_cases,
+        "test_harness": question.cpp_test_harness
+    }
+    await publish_execution_task(task_data)
     
-    if docker_result["status"] == "Accepted":
-        from app.services.event_bus import publish_event
-        
-        # User ID is passed as session_id directly from the frontend if authenticated
-        resolved_user_id = int(request.session_id) if request.session_id.isdigit() else None
-        
-        async def fire_event():
-            try:
-                wrapped_payload = {
-                    "event": "ProblemSolved",
-                    "data": {
-                        "user_id": resolved_user_id,
-                        "problem_id": question_id,
-                        "question_title": question.title,
-                        "language": request.language,
-                        "session_id": request.session_id,
-                        "difficulty": question.difficulty,
-                        "score_change": 10 if question.difficulty == "Easy" else 20 if question.difficulty == "Medium" else 30
-                    }
-                }
-                await publish_event("main_events", wrapped_payload)
-            except Exception as e:
-                import logging
-                logging.error(f"Failed to fire event: {e}")
-                
-        background_tasks.add_task(fire_event)
-    
-    return CodeSubmitResponse(**docker_result)
+    # Returning Pending. SSE will stream the result.
+    # Note: Event bus publishing (ProblemSolved) should ideally be done in the worker or when SSE completes.
+    # For now, we will handle that separately.
+    return CodeSubmitResponse(
+        status="Pending",
+        output=f"Submission queued with ID: {submission.id}",
+        passed_tests=0,
+        total_tests=0,
+        execution_time_ms=0.0,
+        memory_used_kb=0.0
+    )
+
+@router.get("/submissions/{submission_id}/stream")
+async def stream_submission_status(submission_id: int):
+    from fastapi.responses import StreamingResponse
+    import json
+    import asyncio
+    import redis.asyncio as aioredis
+    from app.config import settings
+
+    async def event_generator():
+        redis_client = aioredis.from_url(settings.REDIS_URL if hasattr(settings, 'REDIS_URL') else "redis://localhost:6379")
+        pubsub = redis_client.pubsub()
+        await pubsub.subscribe(f"submission_updates_{submission_id}")
+
+        try:
+            # Yield initial connection success
+            yield "event: connected\ndata: connected\n\n"
+
+            while True:
+                message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                if message:
+                    data = message["data"].decode("utf-8")
+                    yield f"event: result\ndata: {data}\n\n"
+                    # Execution finished
+                    break
+                # Yield ping to keep connection alive
+                yield ":\n\n"
+        finally:
+            await pubsub.unsubscribe()
+            await redis_client.close()
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
 
 @router.get("/submissions/{session_id}", response_model=List[CodeSubmissionOut])
 async def get_session_submissions(session_id: str, db: AsyncSession = Depends(get_db)):

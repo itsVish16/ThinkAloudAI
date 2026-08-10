@@ -27,6 +27,7 @@ from app.models.analytics import UserStats, DailyActivity, UserSkillScore, Learn
 import asyncio
 from app.services.chat_batcher import start_chat_batch_writer
 from app.services.event_consumer import start_event_consumer
+from app.services.code_worker import start_code_worker
 
 
 from sqlalchemy import text
@@ -72,13 +73,15 @@ async def lifespan(app: FastAPI):
                 ('Design Uber for Kids', 'Design a ride-sharing service specifically tailored for unaccompanied minors. Who is the primary user, what are the safety considerations, and how do you go to market?', 'Strategy', NOW());
             """))
     consumer_task = asyncio.create_task(start_event_consumer())
+    code_worker_task = asyncio.create_task(start_code_worker())
     chat_batcher_task = asyncio.create_task(start_chat_batch_writer())
     yield
     # Shutdown: cancel background tasks
     consumer_task.cancel()
+    code_worker_task.cancel()
     chat_batcher_task.cancel()
     try:
-        await asyncio.gather(consumer_task, chat_batcher_task, return_exceptions=True)
+        await asyncio.gather(consumer_task, code_worker_task, chat_batcher_task, return_exceptions=True)
     except asyncio.CancelledError:
         pass
 
