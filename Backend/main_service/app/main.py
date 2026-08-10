@@ -4,7 +4,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routes.chat import router as chat_router
 from app.routes.dsa import router as dsa_router
 from app.routes.users import router as users_router
-from app.routes.auth import router as auth_router
 from app.routes.system_design import router as sd_router
 from app.routes.roadmap import router as roadmap_router
 from app.routes.behavioral import router as behavioral_router
@@ -106,7 +105,6 @@ app.add_middleware(
 app.include_router(chat_router)
 app.include_router(dsa_router)
 app.include_router(users_router)
-app.include_router(auth_router)
 app.include_router(sd_router)
 app.include_router(roadmap_router)
 app.include_router(behavioral_router)

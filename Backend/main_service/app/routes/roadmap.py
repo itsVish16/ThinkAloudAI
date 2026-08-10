@@ -33,7 +33,7 @@ async def get_scheduled_interviews(db: AsyncSession = Depends(get_db), user_id: 
         .join(RoadmapTopic, RoadmapItem.topic_id == RoadmapTopic.id)
         .join(Roadmap, RoadmapTopic.roadmap_id == Roadmap.id)
         .filter(RoadmapItem.content_type == "mock_interview")
-        .filter(or_(Roadmap.user_id == user_id, Roadmap.user_id == "test_user_id"))
+        .filter(Roadmap.user_id == user_id)
         .filter(RoadmapItem.is_completed == False)
         .order_by(Roadmap.created_at.desc())
     )
@@ -62,10 +62,7 @@ async def get_user_roadmaps(db: AsyncSession = Depends(get_db), user_id: str = D
     """Retrieve all roadmaps for the current user and general roadmaps."""
     query = (
         select(Roadmap)
-        .options(
-            selectinload(Roadmap.topics).selectinload(RoadmapTopic.items)
-        )
-        .filter(or_(Roadmap.user_id == user_id, Roadmap.user_id == "test_user_id", Roadmap.is_general == True))
+        .filter(Roadmap.user_id == user_id)
         .order_by(Roadmap.created_at.desc())
     )
     result = await db.execute(query)
@@ -80,7 +77,7 @@ async def get_roadmap(roadmap_id: int, db: AsyncSession = Depends(get_db), user_
             selectinload(Roadmap.topics).selectinload(RoadmapTopic.items)
         )
         .filter(Roadmap.id == roadmap_id)
-        .filter(or_(Roadmap.user_id == user_id, Roadmap.user_id == "test_user_id", Roadmap.is_general == True))
+        .filter(or_(Roadmap.user_id == user_id, Roadmap.is_general == True))
     )
     result = await db.execute(query)
     roadmap = result.scalars().first()
@@ -131,7 +128,7 @@ async def create_roadmap(request: RoadmapCreate, db: AsyncSession = Depends(get_
 @router.post("/{roadmap_id}/topics/{topic_id}/items/{item_id}/toggle", response_model=RoadmapItemOut)
 async def toggle_item_completion(roadmap_id: int, topic_id: int, item_id: int, db: AsyncSession = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     """Toggle the completion status of a specific roadmap item."""
-    query = select(Roadmap).filter(Roadmap.id == roadmap_id, or_(Roadmap.user_id == user_id, Roadmap.user_id == "test_user_id"))
+    query = select(Roadmap).filter(Roadmap.id == roadmap_id, Roadmap.user_id == user_id)
     result = await db.execute(query)
     roadmap = result.scalars().first()
     if not roadmap:
@@ -155,7 +152,7 @@ async def toggle_item_completion(roadmap_id: int, topic_id: int, item_id: int, d
 @router.delete("/{roadmap_id}")
 async def delete_roadmap(roadmap_id: int, db: AsyncSession = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     """Delete a roadmap and all nested items."""
-    query = select(Roadmap).filter(Roadmap.id == roadmap_id, or_(Roadmap.user_id == user_id, Roadmap.user_id == "test_user_id"))
+    query = select(Roadmap).filter(Roadmap.id == roadmap_id, Roadmap.user_id == user_id)
     result = await db.execute(query)
     roadmap = result.scalars().first()
     if not roadmap:

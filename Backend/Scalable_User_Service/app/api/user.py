@@ -757,9 +757,6 @@ async def get_public_profile(
         "institution": profile.institution if profile else None,
         "preferred_language": profile.preferred_language if profile else None,
         "resume_url": profile.resume_url if profile else None,
-
-        "
-        ],
     }
 
     await redis.set(cache_key, _json.dumps(response_data), ex=FULL_PROFILE_CACHE_TTL)
