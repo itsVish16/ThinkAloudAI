@@ -251,6 +251,8 @@ async def signup(
     await set_email_verification_token(redis, str(user.email), verification_otp)
     logger.info(f"PERF_LOG: redis_set_token took {time.time() - t_redis_start:.4f}s")
     
+    await redis.publish("user_events", f"user.created:{user.id}")
+    
     logger.info("verification_otp_generated", email=str(user.email))
     
     t_bg_start = time.time()
@@ -304,8 +306,6 @@ async def login(
     user_id = user.id
     user_is_verified = user.is_verified
 
-    # Release connection back to pool BEFORE doing the slow bcrypt verification!
-    await db.close()
 
     if not await verify_password(payload.password, password_hash):
         await increment_login_attempts(redis, str(payload.email))
@@ -322,17 +322,13 @@ async def login(
 
     await reset_login_attempts(redis, str(payload.email))
 
-    # Open a new short-lived session using the same engine as the request session
-    from sqlalchemy import update
-    from sqlalchemy.ext.asyncio import AsyncSession
+    user.last_login_at = datetime.now(UTC)
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
 
-    async with AsyncSession(db.bind, expire_on_commit=False) as new_db:
-        await new_db.execute(update(User).where(User.id == user_id).values(last_login_at=datetime.now(UTC)))
-        await new_db.commit()
-    
-    user_obj = await get_user_by_id(db, user_id)
-    access_token = create_access_token(str(user_id), username = user_obj.username, email = user_obj.email)
-    refresh_token = create_refresh_token(str(user_id), username = user_obj.username, email = user_obj.email)
+    access_token = create_access_token(str(user_id), username = user.username, email = user.email)
+    refresh_token = create_refresh_token(str(user_id), username = user.username, email = user.email)
 
     return {
         "access_token": access_token,
@@ -594,6 +590,8 @@ async def verify_email(
         )
 
     await mark_user_verified(db, user)
+    await redis.publish("user_events", f"user.verified:{user.id}")
+    
     await delete_email_verification_token(redis, str(payload.email))
     await delete_cached_user_profile(redis, user.id)
     background_tasks.add_task(publish_email_task, "welcome_email", str(user.email), {"full_name": user.full_name})
@@ -757,9 +755,6 @@ async def get_public_profile(
         "institution": profile.institution if profile else None,
         "preferred_language": profile.preferred_language if profile else None,
         "resume_url": profile.resume_url if profile else None,
-
-        "
-        ],
     }
 
     await redis.set(cache_key, _json.dumps(response_data), ex=FULL_PROFILE_CACHE_TTL)

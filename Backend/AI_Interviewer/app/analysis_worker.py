@@ -17,7 +17,7 @@ async def process_message(message: aio_pika.IncomingMessage):
     """
     Process an incoming analysis task from RabbitMQ.
     """
-    async with message.process(requeue=True):
+    async with message.process(requeue=False):
         try:
             payload = json.loads(message.body.decode())
             logger.info(f"Received analysis task for session: {payload.get('session_id')}")

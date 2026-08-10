@@ -4,7 +4,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routes.chat import router as chat_router
 from app.routes.dsa import router as dsa_router
 from app.routes.users import router as users_router
-from app.routes.auth import router as auth_router
 from app.routes.system_design import router as sd_router
 from app.routes.roadmap import router as roadmap_router
 from app.routes.behavioral import router as behavioral_router
@@ -27,6 +26,7 @@ from app.models.analytics import UserStats, DailyActivity, UserSkillScore, Learn
 import asyncio
 from app.services.chat_batcher import start_chat_batch_writer
 from app.services.event_consumer import start_event_consumer
+from app.services.code_worker import start_code_worker
 
 
 from sqlalchemy import text
@@ -72,13 +72,15 @@ async def lifespan(app: FastAPI):
                 ('Design Uber for Kids', 'Design a ride-sharing service specifically tailored for unaccompanied minors. Who is the primary user, what are the safety considerations, and how do you go to market?', 'Strategy', NOW());
             """))
     consumer_task = asyncio.create_task(start_event_consumer())
+    code_worker_task = asyncio.create_task(start_code_worker())
     chat_batcher_task = asyncio.create_task(start_chat_batch_writer())
     yield
     # Shutdown: cancel background tasks
     consumer_task.cancel()
+    code_worker_task.cancel()
     chat_batcher_task.cancel()
     try:
-        await asyncio.gather(consumer_task, chat_batcher_task, return_exceptions=True)
+        await asyncio.gather(consumer_task, code_worker_task, chat_batcher_task, return_exceptions=True)
     except asyncio.CancelledError:
         pass
 
@@ -103,7 +105,6 @@ app.add_middleware(
 app.include_router(chat_router)
 app.include_router(dsa_router)
 app.include_router(users_router)
-app.include_router(auth_router)
 app.include_router(sd_router)
 app.include_router(roadmap_router)
 app.include_router(behavioral_router)

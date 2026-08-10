@@ -15,6 +15,7 @@ TestSession = async_sessionmaker(test_engine, expire_on_commit=False)
 class FakeRedis:
     def __init__(self):
         self.store = {}
+        self.published_messages = []
 
     async def get(self, key):
         return self.store.get(key)
@@ -67,14 +68,9 @@ async def override_get_db():
 @pytest.fixture(autouse=True)
 def override_dependencies():
     from app.core.rate_limit import limiter
-    from app.tasks.celery_app import celery_app
 
     original_limiter_enabled = limiter.enabled
-    original_eager = celery_app.conf.task_always_eager
-    original_eager_prop = celery_app.conf.task_eager_propagates
     limiter.enabled = False
-    celery_app.conf.task_always_eager = True
-    celery_app.conf.task_eager_propagates = False
 
     fake = FakeRedis()
     app.dependency_overrides[get_db] = override_get_db
@@ -82,8 +78,6 @@ def override_dependencies():
     yield fake
     app.dependency_overrides.clear()
     limiter.enabled = original_limiter_enabled
-    celery_app.conf.task_always_eager = original_eager
-    celery_app.conf.task_eager_propagates = original_eager_prop
 
 
 @pytest.fixture
