@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from sqlalchemy import Column, String, Text, DateTime, Integer, ForeignKey, Boolean, Float
+from sqlalchemy import Column, String, Text, DateTime, Integer, ForeignKey, Boolean, Float, Index
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -29,6 +29,9 @@ class DSAQuestion(Base):
 
 class CodeSubmission(Base):
     __tablename__ = "submissions"
+    __table_args__ = (
+        Index("ix_submissions_session_question", "session_id", "question_id"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     session_id = Column(String, index=True)
@@ -74,6 +77,9 @@ class Recommendation(Base):
 
 class UserProblemStatus(Base):
     __tablename__ = "user_problem_status"
+    __table_args__ = (
+        Index("ix_user_problem_status_user_question", "user_id", "question_id"),
+    )
     
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     user_id = Column(String, index=True, nullable=False) # Maps to session_id

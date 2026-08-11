@@ -29,6 +29,9 @@ class UserAchievement(Base):
     """Mapping table for which users have earned which achievements."""
 
     __tablename__ = "user_achievements"
+    __table_args__ = (
+        Index("ix_user_achievements", "user_id", "achievement_id", unique=True),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)

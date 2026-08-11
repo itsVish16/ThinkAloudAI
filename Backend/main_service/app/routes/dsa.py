@@ -34,14 +34,21 @@ import json
 @router.get("/questions", response_model=List[DSAQuestionOut])
 async def list_questions(
     db: AsyncSession = Depends(get_db),
-    redis: Redis = Depends(get_redis)
+    redis: Redis = Depends(get_redis),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100)
 ):
-    cache_key = "dsa:questions:all"
+    cache_key = f"dsa:questions:all:skip={skip}:limit={limit}"
     cached = await redis.get(cache_key)
     if cached:
         return json.loads(cached)
 
-    result = await db.execute(select(DSAQuestion))
+    result = await db.execute(
+        select(DSAQuestion)
+        .order_by(DSAQuestion.id.asc())
+        .offset(skip)
+        .limit(limit)
+    )
     questions = result.scalars().all()
 
     # Serialize using the pydantic model to dict, then json string

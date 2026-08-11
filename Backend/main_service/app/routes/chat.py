@@ -1,7 +1,7 @@
 import json
 import asyncio
 import logging
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -336,8 +336,19 @@ async def chat_stream(request: ChatStreamRequest, user_id: str = Depends(get_cur
 
 
 @router.get("/sessions", response_model=List[ChatSessionOut])
-async def get_sessions(db: AsyncSession = Depends(get_db), user_id: str = Depends(get_current_user_id)):
-    result = await db.execute(select(ChatSession).filter(ChatSession.user_id == user_id).order_by(ChatSession.created_at.desc()))
+async def get_sessions(
+    db: AsyncSession = Depends(get_db), 
+    user_id: str = Depends(get_current_user_id),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100)
+):
+    result = await db.execute(
+        select(ChatSession)
+        .filter(ChatSession.user_id == user_id)
+        .order_by(ChatSession.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+    )
     return result.scalars().all()
 
 
