@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState } from "react";
+import { API_BASE_URL } from '../../services/apiClient';
 import { ArrowUp, StopCircle, Mic } from "lucide-react";
 import "../../styles/Chat.css";
 
@@ -46,8 +47,7 @@ export function ChatInput({ input, setInput, onSubmit, isLoading, onStop }: Chat
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001';
-      const wsUrl = API_URL.replace(/^http/, 'ws') + '/chat/voice-stream';
+      const wsUrl = API_BASE_URL.replace(/^http/, 'ws') + '/chat/voice-stream';
       
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;

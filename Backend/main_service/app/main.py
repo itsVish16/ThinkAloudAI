@@ -37,40 +37,7 @@ async def lifespan(app: FastAPI):
     # Startup: create tables and start event consumer
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        
-        # Add domain and role columns if they don't exist (Postgres 9.6+)
-        await conn.execute(text("ALTER TABLE system_design_questions ADD COLUMN IF NOT EXISTS domain VARCHAR;"))
-        await conn.execute(text("ALTER TABLE system_design_questions ADD COLUMN IF NOT EXISTS role VARCHAR;"))
-        
-        # Seed initial system design questions
-        res = await conn.execute(text("SELECT COUNT(*) FROM system_design_questions"))
-        if res.scalar() == 0:
-            await conn.execute(text("""
-                INSERT INTO system_design_questions (title, description, domain, role, created_at) VALUES 
-                ('Design a Distributed Message Queue', 'Design a distributed message queue system like Apache Kafka or RabbitMQ. Focus on partitioning, replication, message durability, and consumer groups.', 'Backend', 'Senior Software Engineer', NOW()),
-                ('Design a URL Shortener', 'Design a scalable URL shortener like bit.ly. Focus on collision prevention, capacity estimation, caching strategies, and highly available reads.', 'Backend', 'Software Engineer', NOW()),
-                ('Design a Recommendation System for Netflix', 'Design a video recommendation system. Focus on the ML pipeline, feature store, real-time vs batch inference, and model serving infrastructure.', 'AI/ML', 'Senior Software Engineer', NOW()),
-                ('Design a RAG-based Customer Support Chatbot', 'Design a Retrieval-Augmented Generation (RAG) customer support agent. Discuss vector database scaling, embedding generation, context window management, and handling hallucinations.', 'AI/ML', 'Software Engineer', NOW());
-            """))
-            
-        # Seed behavioral and PM questions
-        res_behav = await conn.execute(text("SELECT COUNT(*) FROM behavioral_questions"))
-        if res_behav.scalar() == 0:
-            await conn.execute(text("""
-                INSERT INTO behavioral_questions (title, description, category, created_at) VALUES 
-                ('Handling Conflict', 'Tell me about a time you had a conflict with a coworker or manager and how you resolved it. Focus on communication, empathy, and professional resolution.', 'Conflict', NOW()),
-                ('Overcoming Failure', 'Tell me about a time a project you were working on failed or missed a deadline. What happened and what did you learn?', 'Resilience', NOW()),
-                ('Taking Initiative', 'Tell me about a time you identified a problem and took the initiative to solve it without being asked.', 'Leadership', NOW());
-            """))
-            
-        res_pm = await conn.execute(text("SELECT COUNT(*) FROM pm_questions"))
-        if res_pm.scalar() == 0:
-            await conn.execute(text("""
-                INSERT INTO pm_questions (title, description, category, created_at) VALUES 
-                ('Improve Google Maps', 'How would you improve Google Maps for a specific user segment (e.g., daily commuters, tourists)? Identify pain points and propose 3 new features.', 'Product Sense', NOW()),
-                ('Metric Drop: Instagram', 'You are the PM for Instagram Stories. You notice a 15% drop in daily story creations over the last week. How would you investigate this?', 'Execution', NOW()),
-                ('Design Uber for Kids', 'Design a ride-sharing service specifically tailored for unaccompanied minors. Who is the primary user, what are the safety considerations, and how do you go to market?', 'Strategy', NOW());
-            """))
+
     consumer_task = asyncio.create_task(start_event_consumer())
     code_worker_task = asyncio.create_task(start_code_worker())
     chat_batcher_task = asyncio.create_task(start_chat_batch_writer())

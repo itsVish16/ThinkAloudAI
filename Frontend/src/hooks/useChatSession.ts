@@ -107,6 +107,9 @@ export function useChatSession(opts: UseChatSessionOptions): UseChatSessionApi {
   const activeAssistantIdRef = useRef<string | null>(null);
   const onRenameRef = useRef(onRenameChat);
   onRenameRef.current = onRenameChat;
+  
+  const statusRef = useRef(state.status);
+  statusRef.current = state.status;
 
   const selectSession = useCallback(async (sid: string) => {
     currentSessionIdRef.current = sid;
@@ -151,7 +154,7 @@ export function useChatSession(opts: UseChatSessionOptions): UseChatSessionApi {
   const send = useCallback(async (text: string, images?: string[]) => {
     const trimmed = text.trim();
     if (!trimmed) return;
-    if (state.status === "streaming") return; // no concurrent sends
+    if (statusRef.current === "streaming") return; // no concurrent sends
 
     const targetSessionId = currentSessionIdRef.current || crypto.randomUUID();
     currentSessionIdRef.current = targetSessionId;
@@ -248,7 +251,7 @@ export function useChatSession(opts: UseChatSessionOptions): UseChatSessionApi {
     );
 
     abortRef.current = null;
-  }, [state.status]);
+  }, []);
 
   return {
     ...state,

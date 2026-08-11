@@ -24,6 +24,7 @@ dependencies = [
     { name = "livekit-agents", extra = ["openai", "silero", "speechmatics"] },
     { name = "livekit-api" },
     { name = "livekit-plugins-cartesia" },
+    { name = "livekit-plugins-sarvam" },
     { name = "ollama" },
     { name = "opik" },
     { name = "pillow" },
@@ -49,6 +50,7 @@ requires-dist = [
     { name = "livekit-agents", extras = ["openai", "silero", "speechmatics"], specifier = "==1.4.2" },
     { name = "livekit-api", specifier = ">=1.1.0" },
     { name = "livekit-plugins-cartesia", specifier = ">=1.4.2" },
+    { name = "livekit-plugins-sarvam", specifier = ">=0.1.0" },
     { name = "ollama", specifier = ">=0.6.2" },
     { name = "opik", specifier = ">=2.0.73" },
     { name = "pillow", specifier = ">=10.2.0" },
@@ -1461,6 +1463,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/f1/06/881d11f07eb61619b1cf7fb84fc20c8365169cb09a557e3d4c4ae00f8cdc/livekit_plugins_openai-1.4.2.tar.gz", hash = "sha256:f298388dcf69c38cf5bd105ee0e808e5b555d07b9e515e9d18276450f81518eb", size = 49013, upload-time = "2026-02-17T01:27:29.864Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/6c/92/4d2e70713ed1a7a20de3768cbeb2ae77931e6c5fc3d555b42f6bdd913b38/livekit_plugins_openai-1.4.2-py3-none-any.whl", hash = "sha256:fbdb9d5eff41dcb725210e10d331a8866fd62db4db5e2b8f203ae9dcb68557ce", size = 56942, upload-time = "2026-02-17T01:27:28.872Z" },
+]
+
+[[package]]
+name = "livekit-plugins-sarvam"
+version = "1.4.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "livekit-agents", extra = ["codecs"] },
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/93/33/2df9de42e00f4a30c1a008db5259430fea5805406899b382c68fa9b9ebc1/livekit_plugins_sarvam-1.4.2.tar.gz", hash = "sha256:9d1c24a5b7f231e9fa3f19300fbc4d882b43a52b6025d9fc2fb9329128754512", size = 21830, upload-time = "2026-02-17T01:27:36.576Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/81/06/f98f248be14a08594789f53100ce4cf10ffc0f440bdcd2c63a253aa6f064/livekit_plugins_sarvam-1.4.2-py3-none-any.whl", hash = "sha256:cc8928b27315a857dfdecdaa1405488798061f6f1e42c78d0e3c8739ae01e607", size = 22767, upload-time = "2026-02-17T01:27:35.705Z" },
 ]
 
 [[package]]

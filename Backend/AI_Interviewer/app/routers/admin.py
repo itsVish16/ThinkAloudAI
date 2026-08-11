@@ -59,20 +59,19 @@ async def get_admin_stats(db: AsyncSession = Depends(get_db), _: dict = Depends(
     total_interviews = await db.scalar(select(func.count(InterviewSession.id)))
     
     # Total Interview Minutes (for completed interviews)
-    stmt = select(InterviewSession).where(InterviewSession.stage == 'completed')
-    result = await db.execute(stmt)
-    completed_sessions = result.scalars().all()
+    time_stmt = select(
+        func.sum(func.extract('epoch', InterviewSession.updated_at - InterviewSession.created_at))
+    ).where(InterviewSession.stage == 'completed')
+    total_seconds = await db.scalar(time_stmt)
+    total_minutes = (total_seconds or 0) / 60.0
     
-    total_minutes = 0
-    categories = {}
-    for session in completed_sessions:
-        if session.created_at and session.updated_at:
-            delta = session.updated_at - session.created_at
-            total_minutes += delta.total_seconds() / 60.0
-        
-        # Category breakdown
-        cat = session.interview_type or "Unknown"
-        categories[cat] = categories.get(cat, 0) + 1
+    # Category breakdown
+    cat_stmt = select(
+        InterviewSession.interview_type, 
+        func.count(InterviewSession.id)
+    ).where(InterviewSession.stage == 'completed').group_by(InterviewSession.interview_type)
+    cat_res = await db.execute(cat_stmt)
+    categories = {row[0] or "Unknown": row[1] for row in cat_res.all()}
             
     # 30-day trends
     thirty_days_ago = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=30)

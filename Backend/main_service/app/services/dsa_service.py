@@ -170,6 +170,7 @@ class DSAService:
     @staticmethod
     def stream_submission_status(submission_id: int):
         import redis.asyncio as aioredis
+        import time
         
         async def event_generator():
             redis_client = aioredis.from_url(settings.UPSTASH_REDIS_URL)
@@ -178,14 +179,23 @@ class DSAService:
 
             try:
                 yield "event: connected\ndata: connected\n\n"
+                start_time = time.time()
 
                 while True:
+                    if time.time() - start_time > 40:
+                        error_data = json.dumps({"status": "Error", "error_message": "Execution timed out waiting for worker."})
+                        yield f"event: result\ndata: {error_data}\n\n"
+                        break
+
                     message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
                     if message:
                         data = message["data"].decode("utf-8")
                         yield f"event: result\ndata: {data}\n\n"
                         break
                     yield ":\n\n"
+            except Exception as e:
+                error_data = json.dumps({"status": "Error", "error_message": f"Stream error: {str(e)}"})
+                yield f"event: result\ndata: {error_data}\n\n"
             finally:
                 await pubsub.unsubscribe()
                 await redis_client.close()

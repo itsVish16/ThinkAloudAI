@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { authService } from './services/authService';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
@@ -317,7 +318,9 @@ function App() {
     <div className="app-root-layout">
       {showLayout && <Header currentPage={currentPage} onNavigate={handleNavigate} user={user} onLogout={handleLogout} />}
       <main className="app-main-content">
-        {renderPage()}
+        <ErrorBoundary>
+          {renderPage()}
+        </ErrorBoundary>
       </main>
       {showLayout && <Footer onNavigate={handleNavigate} currentPage={currentPage} />}
     </div>
