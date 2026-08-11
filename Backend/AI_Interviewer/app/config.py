@@ -7,7 +7,6 @@ class Config:
     LIVEKIT_URL = os.getenv("LIVEKIT_URL")
     LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY")
     LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET")
-    SPEECHMATICS_API_KEY = os.getenv("SPEECHMATICS_API_KEY")
 
     # Sarvam AI Config
     SARVAM_API_KEY = os.getenv("SARVAM_API_KEY")
@@ -22,8 +21,8 @@ class Config:
 
     # External User Service Config (defaults assume the unified docker stack)
     USER_SERVICE_URL = os.getenv("USER_SERVICE_URL", "http://localhost:8000")
-    USER_SERVICE_JWT_SECRET = os.environ["USER_SERVICE_JWT_SECRET"]
-    USER_SERVICE_JWT_ALGORITHM = os.getenv("USER_SERVICE_JWT_ALGORITHM", "HS256")
+    JWT_SECRET_KEY = os.environ["JWT_SECRET_KEY"]
+    JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
     
     # Main Service Config (defaults assume the unified docker stack)
     MAIN_SERVICE_URL = os.getenv("MAIN_SERVICE_URL", "http://localhost:8001")

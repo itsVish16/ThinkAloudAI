@@ -4,7 +4,7 @@ from sqlalchemy.orm import DeclarativeBase
 from app.config import settings
 
 engine_kwargs = {}
-if settings.database_url.startswith("postgresql"):
+if settings.DATABASE_URL.startswith("postgresql"):
     engine_kwargs.update(
         {
             "pool_pre_ping": True,
@@ -15,7 +15,9 @@ if settings.database_url.startswith("postgresql"):
         }
     )
 
-engine = create_async_engine(settings.database_url, **engine_kwargs)
+engine = create_async_engine(
+    settings.DATABASE_URL,
+    echo=settings.debug, **engine_kwargs)
 
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 

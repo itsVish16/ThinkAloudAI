@@ -321,7 +321,6 @@ async def entrypoint(ctx: agents.JobContext):
     logger.info(f"Extracted metadata: candidate_name={candidate_name}, user_id={user_id}, interview_type={interview_type}, questions={len(ai_selected_questions)}")
 
     sarvam_key = os.getenv("SARVAM_API_KEY", "").strip()
-    speechmatics_key = os.getenv("SPEECHMATICS_API_KEY", "").strip()
 
     if sarvam_key and not sarvam_key.startswith("<"):
         logger.info("Initializing Sarvam AI STT and TTS")
@@ -332,10 +331,6 @@ async def entrypoint(ctx: agents.JobContext):
             speaker=os.getenv("SARVAM_TTS_SPEAKER", "shubh"),
             target_language_code="en-IN"
         )
-    elif speechmatics_key and not speechmatics_key.startswith("<"):
-        logger.info("Initializing Speechmatics STT and TTS")
-        stt = speechmatics.STT(language="en")
-        tts = speechmatics.TTS()
     else:
         logger.info("No dedicated AI voice keys provided. Falling back to OpenAI STT and TTS.")
         if not os.getenv("OPENAI_API_KEY"):
