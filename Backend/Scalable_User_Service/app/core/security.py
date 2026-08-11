@@ -49,7 +49,7 @@ def create_access_token(subject: str, username: str = "", email: str = "") -> st
         "jti": str(uuid.uuid4()),
         "iss": settings.jwt_issuer,
     }
-    return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
+    return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.algorithm)
 
 
 def create_refresh_token(subject: str, username: str = "", email: str = "") -> str:
@@ -64,7 +64,7 @@ def create_refresh_token(subject: str, username: str = "", email: str = "") -> s
         "jti": str(uuid.uuid4()),
         "iss": settings.jwt_issuer,
     }
-    return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
+    return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.algorithm)
 
 
 def generate_reset_token() -> str:

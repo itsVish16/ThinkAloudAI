@@ -19,10 +19,10 @@ async def get_redis() -> Redis:
             health_check_interval=30,
         )
         # Only pass SSL args when using TLS (rediss://) URLs
-        if settings.redis_url.startswith("rediss://"):
+        if settings.REDIS_URL.startswith("rediss://"):
             pool_kwargs["ssl_cert_reqs"] = "none"
 
-        _pool = ConnectionPool.from_url(settings.redis_url, **pool_kwargs)
+        _pool = ConnectionPool.from_url(settings.REDIS_URL, **pool_kwargs)
 
         _client = Redis(connection_pool=_pool)
         logger.info("Redis connection pool created")

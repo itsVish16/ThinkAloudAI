@@ -35,7 +35,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 import redis.asyncio as redis_async
 
 # Create a shared Redis client with a connection pool
-redis_client = redis_async.from_url(settings.UPSTASH_REDIS_URL, decode_responses=True)
+redis_client = redis_async.from_url(settings.REDIS_URL, decode_responses=True)
 
 async def get_redis():
     """

@@ -173,7 +173,7 @@ class DSAService:
         import time
         
         async def event_generator():
-            redis_client = aioredis.from_url(settings.UPSTASH_REDIS_URL)
+            redis_client = aioredis.from_url(settings.REDIS_URL)
             pubsub = redis_client.pubsub()
             await pubsub.subscribe(f"submission_updates_{submission_id}")
 

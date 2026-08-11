@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     OPIK_API_KEY: str = "replace_me_in_env"
     OPIK_WORKSPACE: str = "default"
     OPIK_PROJECT_NAME: str = "ThinkAloud.ai"
-    UPSTASH_REDIS_URL: str = "redis://localhost:6379"
+    REDIS_URL: str = "redis://localhost:6379"
     RABBITMQ_URL: str = "amqp://guest:guest@rabbitmq:5672/"
     SPEECHMATICS_API_KEY: str = ""
     USER_SERVICE_URL: str = "http://localhost:8000"

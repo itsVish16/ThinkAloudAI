@@ -12,8 +12,8 @@ class Settings(BaseSettings):
     )
 
     debug: bool = False
-    database_url: str = "postgresql+asyncpg://userservice:userservice@localhost:5432/userservice"
-    redis_url: str = "redis://localhost:6379/0"
+    DATABASE_URL: str = "postgresql+asyncpg://userservice:userservice@localhost:5432/userservice"
+    REDIS_URL: str = "redis://localhost:6379/0"
     db_pool_size: int = 20
     db_max_overflow: int = 20
     db_pool_timeout: int = 10
@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     # With 4 workers on 8 cores: each worker gets 2 concurrent hashes max (8 total).
     bcrypt_concurrency: int = cpu_count() or 4
 
-    secret_key: str = "dev-secret-key-change-me"
+    JWT_SECRET_KEY: str = "dev-secret-key-change-me"
     algorithm: str = "HS256"
     jwt_issuer: str = "scalable-user-service"
     access_token_expire_minutes: int = 30

@@ -89,6 +89,7 @@ class AuthService:
                 user = await create_user(db, payload, password_hash)
                 logger.info(f"PERF_LOG: create_user (db) took {time.time() - t_create_start:.4f}s")
             except IntegrityError:
+                await db.rollback()
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="Email or username already exists",
@@ -123,7 +124,6 @@ class AuthService:
         user = await get_user_by_email(db, str(payload.email))
 
         if user is None:
-            await db.close()
             await verify_password("dummy", DUMMY_HASH)
             await increment_login_attempts(redis, str(payload.email))
             raise HTTPException(

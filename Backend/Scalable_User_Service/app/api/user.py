@@ -81,7 +81,7 @@ def _decode_and_validate_token(token: str, expected_type: str) -> dict:
     )
 
     try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.algorithm])
         user_id = payload.get("sub")
         token_type = payload.get("type")
 
@@ -241,7 +241,7 @@ async def refresh_token(
     try:
         decode_payload = jwt.decode(
             payload.refresh_token,
-            settings.secret_key,
+            settings.JWT_SECRET_KEY,
             algorithms=[settings.algorithm],
         )
         user_id = decode_payload.get("sub")
@@ -261,7 +261,7 @@ async def refresh_token(
         raise credentials_exception
 
     exp = decode_payload.get("exp", 0)
-    remaining_ttl = max(int(exp - datetime.now(UTC).timestamp()), 0)
+    remaining_ttl = max(int(exp - datetime.now(UTC).timestamp()), 1)
     await blacklist_token(redis, jti, remaining_ttl)
 
     new_access_token = create_access_token(str(user.id), username = user.username, email = user.email)
@@ -291,11 +291,11 @@ async def logout(
 ):
     # Blacklist the access token (from Authorization header)
     try:
-        access_payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        access_payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.algorithm])
         access_jti = access_payload.get("jti")
         if access_jti:
             exp = access_payload.get("exp", 0)
-            remaining_ttl = max(int(exp - datetime.now(UTC).timestamp()), 0)
+            remaining_ttl = max(int(exp - datetime.now(UTC).timestamp()), 1)
             await blacklist_token(redis, access_jti, remaining_ttl)
     except JWTError:
         pass
@@ -304,13 +304,13 @@ async def logout(
     try:
         refresh_payload = jwt.decode(
             payload.refresh_token,
-            settings.secret_key,
+            settings.JWT_SECRET_KEY,
             algorithms=[settings.algorithm],
         )
         refresh_jti = refresh_payload.get("jti")
         if refresh_jti:
             exp = refresh_payload.get("exp", 0)
-            remaining_ttl = max(int(exp - datetime.now(UTC).timestamp()), 0)
+            remaining_ttl = max(int(exp - datetime.now(UTC).timestamp()), 1)
             await blacklist_token(redis, refresh_jti, remaining_ttl)
     except JWTError:
         pass
@@ -421,6 +421,7 @@ async def update_me(
     try:
         updated_user = await update_user(db, current_user, payload)
     except IntegrityError:
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Username already exists",

@@ -52,9 +52,9 @@ async def get_current_user(request: Request) -> dict:
     try:
         # Stateless JWT verification using shared secret key
         payload = jwt.decode(
-            token, 
-            settings.USER_SERVICE_JWT_SECRET, 
-            algorithms=[settings.USER_SERVICE_JWT_ALGORITHM]
+            token,
+            settings.JWT_SECRET_KEY, 
+            algorithms=[settings.JWT_ALGORITHM]
         )
         
         # The User Service sets 'sub' to session_id/user_id in Main Service

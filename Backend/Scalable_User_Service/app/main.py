@@ -31,7 +31,7 @@ allow_credentials = cors_origins != ["*"]
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # --- Startup Guards ---
-    if not settings.debug and settings.secret_key == "dev-secret-key-change-me":
+    if not settings.debug and settings.JWT_SECRET_KEY == "dev-secret-key-change-me":
         raise RuntimeError(
             "FATAL: SECRET_KEY must be changed for production! "
             "Set a strong random secret via the SECRET_KEY environment variable."
