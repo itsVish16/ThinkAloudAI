@@ -9,10 +9,16 @@ class Config:
     LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET")
     SPEECHMATICS_API_KEY = os.getenv("SPEECHMATICS_API_KEY")
 
-    # LLM Settings (OpenAI-compatible: Fireworks, Gemini, Groq, etc.)
-    LLM_API_KEY = os.getenv("LLM_API_KEY", "")
-    LLM_MODEL = os.getenv("LLM_MODEL", "accounts/fireworks/models/llama-v3p1-70b-instruct")
-    LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.fireworks.ai/inference/v1")
+    # Sarvam AI Config
+    SARVAM_API_KEY = os.getenv("SARVAM_API_KEY")
+    SARVAM_LLM_MODEL = os.getenv("SARVAM_LLM_MODEL", "sarvam-105b")
+    SARVAM_TTS_MODEL = os.getenv("SARVAM_TTS_MODEL", "bulbul:v3")
+    SARVAM_TTS_SPEAKER = os.getenv("SARVAM_TTS_SPEAKER", "shubh")
+
+    # LLM Settings (OpenAI-compatible: Sarvam, Fireworks, Gemini, Groq, etc.)
+    LLM_API_KEY = os.getenv("LLM_API_KEY", SARVAM_API_KEY or "")
+    LLM_MODEL = os.getenv("LLM_MODEL", SARVAM_LLM_MODEL)
+    LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.sarvam.ai/v1")
 
     # External User Service Config (defaults assume the unified docker stack)
     USER_SERVICE_URL = os.getenv("USER_SERVICE_URL", "http://localhost:8000")

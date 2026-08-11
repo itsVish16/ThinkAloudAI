@@ -320,20 +320,30 @@ async def entrypoint(ctx: agents.JobContext):
 
     logger.info(f"Extracted metadata: candidate_name={candidate_name}, user_id={user_id}, interview_type={interview_type}, questions={len(ai_selected_questions)}")
 
+    sarvam_key = os.getenv("SARVAM_API_KEY", "").strip()
     speechmatics_key = os.getenv("SPEECHMATICS_API_KEY", "").strip()
-    if speechmatics_key and not speechmatics_key.startswith("<"):
-        logger.info("Initializing Speechmatics STT and TTS")
-        stt = speechmatics.STT(
-            language="en"
+
+    if sarvam_key and not sarvam_key.startswith("<"):
+        logger.info("Initializing Sarvam AI STT and TTS")
+        from livekit.plugins import sarvam
+        stt = sarvam.STT(model="saaras:v3", language="en-IN")
+        tts = sarvam.TTS(
+            model=os.getenv("SARVAM_TTS_MODEL", "bulbul:v3"),
+            speaker=os.getenv("SARVAM_TTS_SPEAKER", "shubh"),
+            target_language_code="en-IN"
         )
+    elif speechmatics_key and not speechmatics_key.startswith("<"):
+        logger.info("Initializing Speechmatics STT and TTS")
+        stt = speechmatics.STT(language="en")
         tts = speechmatics.TTS()
     else:
-        logger.info("Speechmatics API key not provided or placeholder. Falling back to OpenAI STT and TTS.")
+        logger.info("No dedicated AI voice keys provided. Falling back to OpenAI STT and TTS.")
         if not os.getenv("OPENAI_API_KEY"):
             os.environ["OPENAI_API_KEY"] = os.getenv("LLM_API_KEY", "dummy-key-to-prevent-crash")
         from livekit.plugins import openai
         stt = openai.STT()
         tts = openai.TTS()
+        
     vad = silero.VAD.load()
 
     session = AgentSession(
@@ -400,8 +410,12 @@ async def entrypoint(ctx: agents.JobContext):
         try:
             async for event in stream:
                 now = time.time()
-                # Process a frame every 3 seconds
-                if now - last_process_time > 3.0:
+                
+                # Adaptive sampling: 3s during active interaction, 8s if idle
+                time_since_last_interaction = now - getattr(agent_instance, 'last_interaction_time', now)
+                current_interval = 8.0 if time_since_last_interaction > 15.0 else 3.0
+                
+                if now - last_process_time > current_interval:
                     last_process_time = now
                     frame = event.frame
                     description = await vlm_service.analyze_frame(frame, is_whiteboard=is_whiteboard)
