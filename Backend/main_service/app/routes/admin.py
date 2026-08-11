@@ -19,17 +19,16 @@ async def require_admin(payload: dict = Depends(verify_jwt), db: AsyncSession = 
     email = payload.get("email")
     
     if not email and payload.get("raw_token"):
-        import httpx
         try:
             user_service_url = os.getenv("USER_SERVICE_URL", "http://localhost:8000")
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(
-                    f"{user_service_url}/api/v1/users/me",
-                    headers={"Authorization": f"Bearer {payload['raw_token']}"},
-                    timeout=5.0
-                )
-                if resp.status_code == 200:
-                    email = resp.json().get("email")
+            from app.core.http_client import http_client
+            resp = await http_client.get(
+                f"{user_service_url}/api/v1/users/me",
+                headers={"Authorization": f"Bearer {payload['raw_token']}"},
+                timeout=5.0
+            )
+            if resp.status_code == 200:
+                email = resp.json().get("email", email)
         except Exception:
             pass
 

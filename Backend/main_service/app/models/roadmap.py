@@ -39,7 +39,8 @@ class RoadmapItem(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     topic_id = Column(Integer, ForeignKey("roadmap_topics.id"), nullable=False)
     title = Column(String, nullable=False)
-    content_type = Column(String, nullable=False, default=ContentType.custom.value) # Use string for sqlite compatibility
+    content_type = Column(Enum(ContentType), nullable=False, default=ContentType.custom)
+    estimated_minutes = Column(Integer, default=30)
     content_id = Column(String, nullable=True) # ID of the DSA or System Design question, if applicable
     timeline_days = Column(Integer, nullable=True) # Estimated duration for flexibility
     is_completed = Column(Boolean, default=False)

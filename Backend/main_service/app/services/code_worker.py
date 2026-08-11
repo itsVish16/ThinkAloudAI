@@ -44,7 +44,7 @@ async def process_code_execution(data: dict):
                 await db.commit()
 
         # Publish the result to Redis for SSE listeners
-        redis = aioredis.from_url(settings.UPSTASH_REDIS_URL)
+        from app.database import redis_client as redis
         await redis.publish(f"submission_updates_{submission_id}", json.dumps(docker_result))
         await redis.close()
         
@@ -52,7 +52,7 @@ async def process_code_execution(data: dict):
         logger.error(f"Execution failed for submission {submission_id}: {e}")
         # Try to publish error state
         try:
-            redis = aioredis.from_url(settings.UPSTASH_REDIS_URL)
+            from app.database import redis_client as redis
             await redis.publish(f"submission_updates_{submission_id}", json.dumps({
                 "status": "Error",
                 "error_message": str(e)

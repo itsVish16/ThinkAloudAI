@@ -143,7 +143,7 @@ class InterviewAgent(Agent):
                     payload = json.dumps({"type": "reveal_problem"})
                     await self.room.local_participant.publish_data(payload.encode("utf-8"))
                 
-                # Prepare state copy without the non-serializable queue for SQLite persistence
+                # Prepare state copy without the non-serializable queue for Postgres persistence
                 state_to_save = self.state.copy()
                 state_to_save.pop("stream_queue", None)
 
@@ -576,7 +576,7 @@ async def entrypoint(ctx: agents.JobContext):
         updated_state = await agent.interview_agent.ainvoke(agent.state)
         agent.state = updated_state
         
-        # Prepare state copy without the non-serializable queue for SQLite persistence
+        # Prepare state copy without the non-serializable queue for Postgres persistence
         state_to_save = agent.state.copy()
         state_to_save.pop("stream_queue", None)
 

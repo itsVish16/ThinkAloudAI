@@ -54,22 +54,30 @@ The goal is to build a production-quality platform with clean architecture, exce
 
 # Architecture
 
-Always follow a layered architecture.
+The backend is built as a **Microservices Architecture** comprising three core services. There is strictly no SQLite usage; the system relies exclusively on PostgreSQL and Redis across all services for scalability and robust concurrency handling.
+
+1. **Scalable_User_Service**: Handles authentication, JWT token minting, user profiles, and achievements. Uses PostgreSQL (persistent storage) and Redis (caching, token blacklisting). Key logic is decoupled into `AuthService` and `ProfileService`.
+2. **main_service**: Manages core platform features including DSA execution (via E2B), System Design LLM evaluations, behavioral/PM questions, and study roadmaps. Uses PostgreSQL and Redis. Heavily reliant on shared HTTP client singletons (`app.core.http_client`) to avoid connection pool exhaustion.
+3. **AI_Interviewer**: A real-time voice agent service powered by LiveKit, LangGraph, and RabbitMQ/Celery for asynchronous post-interview analysis. Uses shared HTTP clients and Redis for state management.
+
+## Layering
+
+Always follow a layered architecture within each service:
 
 ```
-API
+API (Routes)
 ↓
-Service
+Service (Business Logic)
 ↓
-Repository
+Repository (Database Queries)
 ↓
 Database
 ```
 
-Never place business logic inside API routes.
+**CRITICAL**: Never place business logic inside API routes. 
+*(Note: We are actively refactoring legacy routes like `chat.py`, `dsa.py`, and `user.py` to adhere strictly to this pattern).*
 
 Routes should only:
-
 - Validate input
 - Call services
 - Return response

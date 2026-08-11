@@ -8,7 +8,7 @@ from app.db.database import Base, get_db
 from app.db.redis import get_redis
 from app.main import app
 
-test_engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+test_engine = create_async_engine("postgresql+asyncpg://userservice:userservice@localhost:5432/userservice_test")
 TestSession = async_sessionmaker(test_engine, expire_on_commit=False)
 
 

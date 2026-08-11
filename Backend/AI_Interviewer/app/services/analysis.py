@@ -49,26 +49,26 @@ def extract_speaking_analytics(messages: list) -> dict:
 
 import httpx
 from app.config import settings
+from app.services.http_client import http_client
 
 async def get_code_submissions(session_id: str) -> str:
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(f"{settings.MAIN_SERVICE_URL}/dsa/submissions/{session_id}", timeout=10.0)
-            if response.status_code == 200:
-                submissions = response.json()
-                if not submissions:
-                    return "No code submissions found."
-                
-                formatted = ""
-                for i, sub in enumerate(submissions):
-                    formatted += f"--- Submission {i+1} ---\n"
-                    formatted += f"Language: {sub.get('language')}\n"
-                    formatted += f"Status: {sub.get('status')}\n"
-                    if sub.get('error_message'):
-                        formatted += f"Error: {sub.get('error_message')}\n"
-                    formatted += f"Code:\n{sub.get('code')}\n\n"
-                return formatted
-            return "Could not retrieve code submissions."
+        response = await http_client.get(f"{settings.MAIN_SERVICE_URL}/dsa/submissions/{session_id}", timeout=10.0)
+        if response.status_code == 200:
+            submissions = response.json()
+            if not submissions:
+                return "No code submissions found."
+            
+            formatted = ""
+            for i, sub in enumerate(submissions):
+                formatted += f"--- Submission {i+1} ---\n"
+                formatted += f"Language: {sub.get('language')}\n"
+                formatted += f"Status: {sub.get('status')}\n"
+                if sub.get('error_message'):
+                    formatted += f"Error: {sub.get('error_message')}\n"
+                formatted += f"Code:\n{sub.get('code')}\n\n"
+            return formatted
+        return "Could not retrieve code submissions."
     except Exception as e:
         logger.error(f"Failed to fetch code submissions: {e}")
         return "Failed to fetch code submissions."
