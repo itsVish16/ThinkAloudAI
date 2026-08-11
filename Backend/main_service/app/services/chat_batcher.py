@@ -14,23 +14,21 @@ FLUSH_INTERVAL = 5.0  # seconds
 
 async def flush_chat_buffer():
     """Reads messages from Redis buffer and bulk inserts them into PostgreSQL."""
-    async for redis in get_redis():
-        try:
-            messages = []
-            while len(messages) < BATCH_SIZE:
-                raw_msg = await redis.lpop(CHAT_BUFFER_KEY)
-                if not raw_msg:
-                    break
-                try:
-                    messages.append(json.loads(raw_msg))
-                except json.JSONDecodeError:
-                    logger.error("Failed to decode message from Redis buffer")
-            
-            if not messages:
-                return
+    try:
+        from app.database import redis_client as redis
+        raw_msgs = await redis.lrange(CHAT_BUFFER_KEY, 0, BATCH_SIZE - 1)
+        if not raw_msgs:
+            return
 
+        messages = []
+        for raw in raw_msgs:
+            try:
+                messages.append(json.loads(raw))
+            except json.JSONDecodeError:
+                logger.error("Failed to decode message from Redis buffer")
+        
+        if messages:
             logger.info(f"Flushing {len(messages)} chat messages to DB")
-            
             async with SessionLocal() as db:
                 db_messages = []
                 for msg_data in messages:
@@ -44,10 +42,11 @@ async def flush_chat_buffer():
                 db.add_all(db_messages)
                 await db.commit()
                 
-        except Exception as e:
-            logger.error(f"Error flushing chat buffer: {e}")
-        
-        break # get_redis yields once
+        # If DB commit is successful (or there were only invalid messages), trim from Redis
+        await redis.ltrim(CHAT_BUFFER_KEY, len(raw_msgs), -1)
+
+    except Exception as e:
+        logger.error(f"Error flushing chat buffer: {e}")
 
 async def start_chat_batch_writer():
     """Background task loop that flushes the Redis chat buffer periodically."""

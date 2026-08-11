@@ -46,7 +46,6 @@ async def process_code_execution(data: dict):
         # Publish the result to Redis for SSE listeners
         from app.database import redis_client as redis
         await redis.publish(f"submission_updates_{submission_id}", json.dumps(docker_result))
-        await redis.close()
         
     except Exception as e:
         logger.error(f"Execution failed for submission {submission_id}: {e}")
@@ -57,7 +56,6 @@ async def process_code_execution(data: dict):
                 "status": "Error",
                 "error_message": str(e)
             }))
-            await redis.close()
             
             async with SessionLocal() as db:
                 result = await db.execute(select(CodeSubmission).filter(CodeSubmission.id == submission_id))
@@ -75,6 +73,13 @@ async def start_code_worker():
     """
     rabbitmq_url = settings.RABBITMQ_URL if hasattr(settings, 'RABBITMQ_URL') else "amqp://guest:guest@localhost:5672/"
     
+    # Limit concurrent executions to 5
+    semaphore = asyncio.Semaphore(5)
+    
+    async def process_with_semaphore(data):
+        async with semaphore:
+            await process_code_execution(data)
+    
     while True:
         try:
             connection = await connect_robust(rabbitmq_url)
@@ -90,12 +95,16 @@ async def start_code_worker():
                     async with message.process():
                         try:
                             data = json.loads(message.body.decode())
-                            # We don't await process_code_execution directly to allow concurrent processing
-                            # up to the prefetch_count limit.
-                            asyncio.create_task(process_code_execution(data))
+                            # Use a semaphore to limit concurrent executions
+                            asyncio.create_task(process_with_semaphore(data))
                         except Exception as e:
                             logger.error(f"Error processing code execution message: {e}")
                             
         except Exception as e:
             logger.error(f"RabbitMQ connection failed in code worker: {e}. Retrying in 5 seconds...")
+            try:
+                if 'connection' in locals() and connection and not connection.is_closed:
+                    await connection.close()
+            except Exception:
+                pass
             await asyncio.sleep(5)

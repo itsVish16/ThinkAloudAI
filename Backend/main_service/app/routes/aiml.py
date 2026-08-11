@@ -1,19 +1,15 @@
 import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 from typing import List
-from sqlalchemy import text
 
 from app.database import get_db, get_redis
-from app.models.aiml import AIMLQuestion
 from app.schemas.aiml import AIMLQuestionCreate, AIMLQuestionOut
 from redis.asyncio import Redis
 from app.auth import verify_jwt
+from app.services.aiml_service import AIMLService
 
 router = APIRouter(prefix="/aiml", tags=["AI/ML Questions"], dependencies=[Depends(verify_jwt)])
-
-
 
 @router.get("/questions", response_model=List[AIMLQuestionOut])
 async def list_questions(
@@ -24,35 +20,14 @@ async def list_questions(
     """
     List all available AI/ML questions.
     """
-    cache_key = f"aiml:questions:all"
-    cached = await redis.get(cache_key)
-    if cached:
-        return json.loads(cached)
-
-    query = select(AIMLQuestion).limit(limit)
-    result = await db.execute(query)
-    questions = result.scalars().all()
-
-    def _serialize(q):
-        data = AIMLQuestionOut.model_validate(q).model_dump()
-        data["created_at"] = data["created_at"].isoformat()
-        return data
-
-    serialized_q = [_serialize(q) for q in questions]
-    await redis.set(cache_key, json.dumps(serialized_q), ex=3600)
-
-    return questions
+    return await AIMLService.list_questions(limit, db, redis)
 
 @router.get("/questions/{question_id}", response_model=AIMLQuestionOut)
 async def get_question(question_id: int, db: AsyncSession = Depends(get_db)):
     """
     Get a specific AI/ML question by its ID.
     """
-    result = await db.execute(select(AIMLQuestion).filter(AIMLQuestion.id == question_id))
-    question = result.scalars().first()
-    if not question:
-        raise HTTPException(status_code=404, detail="Question not found")
-    return question
+    return await AIMLService.get_question(question_id, db)
 
 @router.post("/questions", response_model=AIMLQuestionOut)
 async def create_question(
@@ -63,17 +38,4 @@ async def create_question(
     """
     Create a new AI/ML question.
     """
-    new_question = AIMLQuestion(
-        title=request.title,
-        description=request.description,
-        domain=request.domain,
-        role=request.role
-    )
-    db.add(new_question)
-    await db.commit()
-    await db.refresh(new_question)
-    
-    # Invalidate cache
-    await redis.delete("aiml:questions:all")
-    
-    return new_question
+    return await AIMLService.create_question(request, db, redis)

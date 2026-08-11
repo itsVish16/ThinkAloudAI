@@ -40,12 +40,15 @@ class ChatService:
             title = result.content.strip(" \"'")
             
             async with SessionLocal() as db:
-                session = await db.execute(select(ChatSession).filter(ChatSession.id == session_id))
-                session_obj = session.scalars().first()
-                if session_obj:
-                    session_obj.title = title
-                    await db.commit()
-                    
+                try:
+                    session = await db.execute(select(ChatSession).filter(ChatSession.id == session_id))
+                    session_obj = session.scalars().first()
+                    if session_obj:
+                        session_obj.title = title
+                        await db.commit()
+                except Exception as e:
+                    await db.rollback()
+                    logger.error(f"Error updating chat title in DB: {e}")
             return title
         except Exception as e:
             logger.error(f"Error generating chat title: {e}")
@@ -319,6 +322,7 @@ class ChatService:
                     }))
 
             except Exception as e:
+                await db.rollback()
                 yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
     @staticmethod

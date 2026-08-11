@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     OPIK_WORKSPACE: str = "default"
     OPIK_PROJECT_NAME: str = "ThinkAloud.ai"
     UPSTASH_REDIS_URL: str = "redis://localhost:6379"
+    RABBITMQ_URL: str = "amqp://guest:guest@rabbitmq:5672/"
     SPEECHMATICS_API_KEY: str = ""
     USER_SERVICE_URL: str = "http://localhost:8000"
     TAVILY_API_KEY: str = ""

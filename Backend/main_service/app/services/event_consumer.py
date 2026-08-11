@@ -104,4 +104,9 @@ async def start_event_consumer():
                             
         except Exception as e:
             logger.error(f"RabbitMQ connection failed: {e}. Retrying in 5 seconds...")
+            try:
+                if 'connection' in locals() and connection and not connection.is_closed:
+                    await connection.close()
+            except Exception:
+                pass
             await asyncio.sleep(5)
