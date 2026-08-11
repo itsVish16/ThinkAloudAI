@@ -1,5 +1,6 @@
 // src/services/apiClient.ts
 
+export const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 let isRefreshing = false;
 let failedQueue: Array<{ resolve: (token: string) => void; reject: (error: any) => void }> = [];
 

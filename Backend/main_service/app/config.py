@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     FIREWORKS_API_KEY: str = ""
     FIREWORKS_MODEL: str = "accounts/fireworks/routers/glm-5p2-fast"
     DATABASE_URL: str
-    JWT_SECRET_KEY: str = "replace_me_in_env"
+    JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
     E2B_API_KEY: str = "replace_me_in_env"
     OPIK_API_KEY: str = "replace_me_in_env"

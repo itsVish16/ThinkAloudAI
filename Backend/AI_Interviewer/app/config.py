@@ -22,7 +22,7 @@ class Config:
 
     # External User Service Config (defaults assume the unified docker stack)
     USER_SERVICE_URL = os.getenv("USER_SERVICE_URL", "http://localhost:8000")
-    USER_SERVICE_JWT_SECRET = os.getenv("USER_SERVICE_JWT_SECRET", "default-fallback-only-for-dev")
+    USER_SERVICE_JWT_SECRET = os.environ["USER_SERVICE_JWT_SECRET"]
     USER_SERVICE_JWT_ALGORITHM = os.getenv("USER_SERVICE_JWT_ALGORITHM", "HS256")
     
     # Main Service Config (defaults assume the unified docker stack)

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { API_BASE_URL } from '../services/apiClient';
 import { ArrowLeft, Warning, WarningCircle } from '@phosphor-icons/react';
 import { getInterviewDetails, endInterview } from '../services/interviewService';
 import { PageHeader } from '../components/common/PageHeader';
@@ -58,9 +59,7 @@ export function InterviewAnalysis({ sessionId, onNavigate }: InterviewAnalysisPr
       const token = localStorage.getItem('access_token');
       if (token) {
         await endInterview(token, sessionId);
-        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8002';
-        const eventSource = new EventSource(`${API_URL}/api/interview/${sessionId}/stream?token=${token}`);
-        
+        const eventSource = new EventSource(`${API_BASE_URL}/api/interview/${sessionId}/stream?token=${token}`);
         eventSource.onmessage = (event) => {
           const data = JSON.parse(event.data);
           if (data.event === "InterviewCompleted") {
