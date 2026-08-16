@@ -1,16 +1,116 @@
-from app.agent.state import InterviewState
-from app.agent.prompts import STAGE_PROMPTS, TTS_RULES
-from app.agent.llm import call_llm
 import time
 from datetime import datetime
+from typing import Dict, Any, List
 
-async def generate_response(state: InterviewState):
+from app.agent.state import InterviewState, InterviewStage
+from app.agent.prompts import (
+    STAGE_PROMPTS,
+    TTS_RULES,
+    INTERVIEW_PERSONA,
+    EVALUATOR_RULES,
+    EVALUATION_PROMPT,
+)
+from app.agent.llm import call_llm, stream_dual_llm, evaluate_llm
+
+INTERVIEW_FLOWS: Dict[str, List[str]] = {
+    "general": [
+        InterviewStage.INTRO_AUDIO_CHECK.value,
+        InterviewStage.INTRO_AGENDA.value,
+        InterviewStage.INTRO_CANDIDATE.value,
+        InterviewStage.RESUME_PROBE.value,
+        InterviewStage.CANDIDATE_QA.value,
+        InterviewStage.WRAP_UP.value,
+        InterviewStage.COMPLETED.value,
+    ],
+    "system_design": [
+        InterviewStage.INTRO_AUDIO_CHECK.value,
+        InterviewStage.INTRO_AGENDA.value,
+        InterviewStage.INTRO_CANDIDATE.value,
+        InterviewStage.SYSTEM_DESIGN_REQUIREMENTS.value,
+        InterviewStage.SYSTEM_DESIGN_HLD.value,
+        InterviewStage.SYSTEM_DESIGN_DEEP_DIVE.value,
+        InterviewStage.CANDIDATE_QA.value,
+        InterviewStage.WRAP_UP.value,
+        InterviewStage.COMPLETED.value,
+    ],
+    "dsa": [
+        InterviewStage.INTRO_AUDIO_CHECK.value,
+        InterviewStage.INTRO_AGENDA.value,
+        InterviewStage.INTRO_CANDIDATE.value,
+        InterviewStage.DSA_PRESENTATION.value,
+        InterviewStage.DSA_APPROACH.value,
+        InterviewStage.DSA_CODING.value,
+        InterviewStage.DSA_TESTING.value,
+        InterviewStage.RESUME_PROBE.value,
+        InterviewStage.CANDIDATE_QA.value,
+        InterviewStage.WRAP_UP.value,
+        InterviewStage.COMPLETED.value,
+    ],
+    "hr": [
+        InterviewStage.INTRO_AUDIO_CHECK.value,
+        InterviewStage.INTRO_AGENDA.value,
+        InterviewStage.INTRO_CANDIDATE.value,
+        InterviewStage.BEHAVIORAL_QUESTION.value,
+        InterviewStage.BEHAVIORAL_FOLLOWUP.value,
+        InterviewStage.CANDIDATE_QA.value,
+        InterviewStage.WRAP_UP.value,
+        InterviewStage.COMPLETED.value,
+    ],
+    "pm": [
+        InterviewStage.INTRO_AUDIO_CHECK.value,
+        InterviewStage.INTRO_AGENDA.value,
+        InterviewStage.INTRO_CANDIDATE.value,
+        InterviewStage.PRODUCT_SENSE_CORE.value,
+        InterviewStage.CANDIDATE_QA.value,
+        InterviewStage.WRAP_UP.value,
+        InterviewStage.COMPLETED.value,
+    ],
+    "presentation": [
+        InterviewStage.INTRO_AUDIO_CHECK.value,
+        InterviewStage.INTRO_AGENDA.value,
+        InterviewStage.INTRO_CANDIDATE.value,
+        InterviewStage.PRESENTATION_QA.value,
+        InterviewStage.CANDIDATE_QA.value,
+        InterviewStage.WRAP_UP.value,
+        InterviewStage.COMPLETED.value,
+    ],
+    "ai_ml": [
+        InterviewStage.INTRO_AUDIO_CHECK.value,
+        InterviewStage.INTRO_AGENDA.value,
+        InterviewStage.INTRO_CANDIDATE.value,
+        InterviewStage.AIML_FUNDAMENTALS.value,
+        InterviewStage.AIML_SYSTEM.value,
+        InterviewStage.CANDIDATE_QA.value,
+        InterviewStage.WRAP_UP.value,
+        InterviewStage.COMPLETED.value,
+    ],
+}
+
+
+def normalize_interview_type(interview_type: str) -> str:
+    i_type = (interview_type or "general").lower().strip()
+    if "system_design" in i_type or "sd" in i_type:
+        return "system_design"
+    elif "dsa" in i_type or "swe" in i_type or "coding" in i_type:
+        return "dsa"
+    elif "hr" in i_type or "behavioral" in i_type:
+        return "hr"
+    elif "pm" in i_type or "product" in i_type:
+        return "pm"
+    elif "presentation" in i_type:
+        return "presentation"
+    elif "ai" in i_type or "ml" in i_type:
+        return "ai_ml"
+    return "general"
+
+
+async def generate_response(state: InterviewState) -> Dict[str, Any]:
     """
     The Speaker Node. Purely conversational. Streams a response based on the current stage.
     """
     current_stage = state["stage"]
     prompt = STAGE_PROMPTS.get(current_stage, STAGE_PROMPTS["wrap_up"])
-    
+
     # Calculate time context
     start_time = state.get("start_time", time.time())
     elapsed_minutes = int((time.time() - start_time) / 60)
@@ -18,7 +118,7 @@ async def generate_response(state: InterviewState):
     time_warning = ""
     if elapsed_minutes >= max_duration - 5:
         time_warning = "WARNING: You are out of time. End the interview gracefully in this turn."
-        
+
     remaining_minutes = max_duration - elapsed_minutes
     current_date = datetime.now().strftime("%B %d, %Y")
 
@@ -41,30 +141,59 @@ async def generate_response(state: InterviewState):
     else:
         formatted_type = i_type_raw.replace("_", " ").title()
 
+    # Format active question nicely
+    if isinstance(active_q, dict):
+        q_title = active_q.get("title", "")
+        q_desc = active_q.get("description", "")
+        q_diff = active_q.get("difficulty", "")
+        formatted_q = f"Title: {q_title} (Difficulty: {q_diff})\nDescription:\n{q_desc}"
+    elif active_q:
+        formatted_q = str(active_q)
+    else:
+        formatted_q = "None"
+
+    # Format execution output nicely
+    exec_raw = state.get("latest_execution")
+    if isinstance(exec_raw, dict):
+        st = exec_raw.get("status", "Unknown")
+        rt = exec_raw.get("runtime", "N/A")
+        raw_info = exec_raw.get("raw") or {}
+        passed = raw_info.get("passed_tests", 0)
+        total = raw_info.get("total_tests", 0)
+        err = raw_info.get("error_message") or ""
+        formatted_exec = f"Status: {st} | Tests Passed: {passed}/{total} | Runtime: {rt}"
+        if err:
+            formatted_exec += f"\nError Message: {err}"
+    elif exec_raw:
+        formatted_exec = str(exec_raw)
+    else:
+        formatted_exec = "None"
+
+    code_str = state.get("latest_code") or "None"
+
     prompt = prompt.format(
+        candidate_name=state.get("candidate_name", "Candidate"),
         elapsed_minutes=elapsed_minutes,
         max_duration_minutes=max_duration,
         remaining_minutes=remaining_minutes,
         current_date=current_date,
         time_warning=time_warning,
         interview_type=formatted_type,
-        current_active_question=active_q
+        current_active_question=formatted_q,
+        latest_code=code_str,
+        latest_execution=formatted_exec,
     )
 
-    from app.agent.prompts import INTERVIEW_PERSONA
-    
     # Smarter context injection
     extra_context = ""
-    
-    # Only inject code context during coding stages
-    if current_stage in ["dsa_coding", "dsa_testing"]:
-        code = state.get("latest_code", "")
-        exec_out = state.get("latest_execution", "")
-        if code:
-            extra_context += f"\n\nIDE CONTEXT:\n<CANDIDATE_CODE>\n{code}\n</CANDIDATE_CODE>"
-        if exec_out:
-            extra_context += f"\n<EXECUTION_OUTPUT>\n{exec_out}\n</EXECUTION_OUTPUT>"
-            
+
+    # Inject code context during any DSA/coding stages
+    if any(s in current_stage for s in ["dsa", "coding", "testing"]):
+        if code_str and code_str != "None":
+            extra_context += f"\n\nCURRENT CANDIDATE CODE IN IDE:\n<CANDIDATE_CODE>\n{code_str}\n</CANDIDATE_CODE>"
+        if formatted_exec and formatted_exec != "None":
+            extra_context += f"\n\nLATEST TEST EXECUTION RESULT:\n<EXECUTION_OUTPUT>\n{formatted_exec}\n</EXECUTION_OUTPUT>"
+
     # Only inject visual context during design/whiteboarding stages
     if "system_design" in current_stage:
         whiteboard = state.get("latest_whiteboard_context", "")
@@ -72,22 +201,141 @@ async def generate_response(state: InterviewState):
             extra_context += f"\n\nWHITEBOARD VISUAL OBSERVATION:\n{whiteboard}"
 
     full_system_prompt = f"{INTERVIEW_PERSONA}\n\n{TTS_RULES}\n\n{prompt}{extra_context}"
-    
+
     # Adaptive message window
-    # Intros don't need much history. Coding needs more.
     if current_stage.startswith("intro_"):
         window_size = 6
     elif current_stage == "wrap_up":
         window_size = 4
     else:
         window_size = 10
-        
+
     recent_messages = state["messages"][-window_size:]
-    
-    # Fast streaming call to TTS
-    resp = await call_llm(recent_messages, full_system_prompt, state.get("stream_queue"), opik_trace_id=state.get("opik_trace_id"))
-    
+
+    # Fast dual-LLM streaming call to TTS
+    metrics = state.get("current_turn_metrics")
+    resp = await stream_dual_llm(
+        recent_messages,
+        full_system_prompt,
+        state.get("stream_queue"),
+        opik_trace_id=state.get("opik_trace_id"),
+        stage=current_stage,
+        metrics=metrics,
+    )
+
     new_messages = state["messages"] + [{"role": "assistant", "content": resp}]
     return {
-        "messages": new_messages
+        "messages": new_messages,
+    }
+
+
+async def evaluate_and_route(state: InterviewState) -> Dict[str, Any]:
+    """
+    State machine evaluator node. Evaluates the turn using evaluate_llm, checks if
+    objective_met or max turns/time is exceeded, updates state["stage"] to the next stage
+    in INTERVIEW_FLOWS, and returns the updated state dict.
+    """
+    current_stage = state.get("stage", InterviewStage.INTRO_AUDIO_CHECK.value)
+    interview_type = state.get("interview_type", "general")
+    normalized_type = normalize_interview_type(interview_type)
+    flow = INTERVIEW_FLOWS.get(normalized_type, INTERVIEW_FLOWS["general"])
+
+    start_time = state.get("start_time", time.time())
+    elapsed_minutes = (time.time() - start_time) / 60.0
+    max_duration = state.get("max_duration_minutes", 60)
+    time_exceeded = elapsed_minutes >= max_duration
+
+    turns_in_stage = state.get("turns_in_stage", 0) + 1
+    stage_rule = EVALUATOR_RULES.get(current_stage, "Advance when appropriate.")
+
+    # Format execution and code for evaluator
+    eval_code = state.get("latest_code") or "None"
+    eval_exec_raw = state.get("latest_execution")
+    if isinstance(eval_exec_raw, dict):
+        st = eval_exec_raw.get("status", "Unknown")
+        raw_info = eval_exec_raw.get("raw") or {}
+        passed = raw_info.get("passed_tests", 0)
+        total = raw_info.get("total_tests", 0)
+        eval_exec = f"Status: {st} | Tests Passed: {passed}/{total}"
+    elif eval_exec_raw:
+        eval_exec = str(eval_exec_raw)
+    else:
+        eval_exec = "None"
+
+    eval_prompt = EVALUATION_PROMPT.format(
+        stage=current_stage,
+        turns_in_stage=turns_in_stage,
+        stage_rule=stage_rule,
+        latest_code=eval_code,
+        latest_execution=eval_exec,
+    )
+
+    recent_messages = state.get("messages", [])[-10:]
+    metrics = state.get("current_turn_metrics")
+    eval_res = await evaluate_llm(
+        messages=recent_messages,
+        system_prompt=eval_prompt,
+        opik_trace_id=state.get("opik_trace_id"),
+        metrics=metrics,
+    )
+
+    eval_dict = eval_res.model_dump() if hasattr(eval_res, "model_dump") else eval_res
+    if isinstance(eval_dict, dict):
+        objective_met = eval_dict.get("objective_met", False)
+        trigger_next_q = eval_dict.get("trigger_next_question", False)
+    else:
+        objective_met = getattr(eval_res, "objective_met", False)
+        trigger_next_q = getattr(eval_res, "trigger_next_question", False)
+
+    evaluations = list(state.get("evaluations", [])) + [eval_dict]
+
+    should_advance = objective_met or turns_in_stage >= 10 or time_exceeded
+    should_end = state.get("should_end", False)
+
+    # Multi-question loop: when the evaluator signals trigger_next_question and
+    # more problems remain, loop back to dsa_presentation instead of advancing
+    # linearly past the DSA stages.
+    questions = state.get("ai_selected_questions", [])
+    current_idx = state.get("active_question_index", 0)
+    active_question_index = current_idx  # default: no change
+
+    if trigger_next_q and current_idx < len(questions) - 1:
+        next_stage = InterviewStage.DSA_PRESENTATION.value
+        active_question_index = current_idx + 1
+        turns_in_stage = 0
+    elif current_stage == InterviewStage.COMPLETED.value:
+        next_stage = InterviewStage.COMPLETED.value
+        should_end = True
+    elif current_stage == InterviewStage.WRAP_UP.value:
+        should_end = True
+        if should_advance:
+            next_stage = InterviewStage.COMPLETED.value
+            turns_in_stage = 0
+        else:
+            next_stage = current_stage
+    elif time_exceeded:
+        next_stage = InterviewStage.WRAP_UP.value
+        turns_in_stage = 0
+    elif should_advance:
+        if current_stage in flow:
+            idx = flow.index(current_stage)
+            if idx + 1 < len(flow):
+                next_stage = flow[idx + 1]
+            else:
+                next_stage = InterviewStage.COMPLETED.value
+        else:
+            next_stage = InterviewStage.WRAP_UP.value
+        turns_in_stage = 0
+    else:
+        next_stage = current_stage
+
+    if next_stage == InterviewStage.COMPLETED.value:
+        should_end = True
+
+    return {
+        "stage": next_stage,
+        "turns_in_stage": turns_in_stage,
+        "evaluations": evaluations,
+        "should_end": should_end,
+        "active_question_index": active_question_index,
     }

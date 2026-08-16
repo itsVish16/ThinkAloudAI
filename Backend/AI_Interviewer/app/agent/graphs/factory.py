@@ -1,85 +1,31 @@
 from langgraph.graph import StateGraph, END
-from app.agent.state import InterviewState, InterviewStage
-from app.agent.graphs.base import generate_response
+from app.agent.state import InterviewState
+from app.agent.graphs.base import (
+    INTERVIEW_FLOWS,
+    generate_response,
+    evaluate_and_route,
+    normalize_interview_type,
+)
 
-INTERVIEW_FLOWS = {
-    "general": [
-        InterviewStage.INTRO_AUDIO_CHECK.value,
-        InterviewStage.INTRO_AGENDA.value,
-        InterviewStage.INTRO_CANDIDATE.value,
-        InterviewStage.RESUME_PROBE.value,
-        InterviewStage.CANDIDATE_QA.value,
-        InterviewStage.WRAP_UP.value,
-        InterviewStage.COMPLETED.value
-    ],
-    "system_design": [
-        InterviewStage.INTRO_AUDIO_CHECK.value,
-        InterviewStage.INTRO_AGENDA.value,
-        InterviewStage.INTRO_CANDIDATE.value,
-        InterviewStage.SYSTEM_DESIGN_REQUIREMENTS.value,
-        InterviewStage.SYSTEM_DESIGN_HLD.value,
-        InterviewStage.SYSTEM_DESIGN_DEEP_DIVE.value,
-        InterviewStage.CANDIDATE_QA.value,
-        InterviewStage.WRAP_UP.value,
-        InterviewStage.COMPLETED.value
-    ],
-    "dsa": [
-        InterviewStage.INTRO_AUDIO_CHECK.value,
-        InterviewStage.INTRO_CANDIDATE.value,
-        InterviewStage.INTRO_EDITOR.value,
-        InterviewStage.DSA_PRESENTATION.value,
-        InterviewStage.DSA_APPROACH.value,
-        InterviewStage.DSA_CODING.value,
-        InterviewStage.DSA_TESTING.value,
-        InterviewStage.CANDIDATE_QA.value,
-        InterviewStage.WRAP_UP.value,
-        InterviewStage.COMPLETED.value
-    ],
-    "hr": [
-        InterviewStage.INTRO_AUDIO_CHECK.value,
-        InterviewStage.INTRO_AGENDA.value,
-        InterviewStage.INTRO_CANDIDATE.value,
-        InterviewStage.BEHAVIORAL_QUESTION.value,
-        InterviewStage.BEHAVIORAL_FOLLOWUP.value,
-        InterviewStage.CANDIDATE_QA.value,
-        InterviewStage.WRAP_UP.value,
-        InterviewStage.COMPLETED.value
-    ],
-    "pm": [
-        InterviewStage.INTRO_AUDIO_CHECK.value,
-        InterviewStage.INTRO_AGENDA.value,
-        InterviewStage.INTRO_CANDIDATE.value,
-        InterviewStage.PRODUCT_SENSE_CORE.value,
-        InterviewStage.CANDIDATE_QA.value,
-        InterviewStage.WRAP_UP.value,
-        InterviewStage.COMPLETED.value
-    ],
-    "presentation": [
-        InterviewStage.INTRO_AUDIO_CHECK.value,
-        InterviewStage.INTRO_AGENDA.value,
-        InterviewStage.INTRO_CANDIDATE.value,
-        InterviewStage.PRESENTATION_QA.value,
-        InterviewStage.CANDIDATE_QA.value,
-        InterviewStage.WRAP_UP.value,
-        InterviewStage.COMPLETED.value
-    ],
-    "ai_ml": [
-        InterviewStage.INTRO_AUDIO_CHECK.value,
-        InterviewStage.INTRO_AGENDA.value,
-        InterviewStage.INTRO_CANDIDATE.value,
-        InterviewStage.AIML_FUNDAMENTALS.value,
-        InterviewStage.AIML_SYSTEM.value,
-        InterviewStage.CANDIDATE_QA.value,
-        InterviewStage.WRAP_UP.value,
-        InterviewStage.COMPLETED.value
-    ]
-}
 
-def build_graph(interview_type: str):
+def build_graph(interview_type: str = "general"):
+    """
+    Builds the LangGraph state graph for the interview agent.
+    """
     workflow = StateGraph(InterviewState)
     workflow.add_node("generate_response", generate_response)
-    
+    workflow.add_node("evaluate_and_route", evaluate_and_route)
+
     workflow.set_entry_point("generate_response")
     workflow.add_edge("generate_response", END)
-    
+
     return workflow.compile()
+
+
+__all__ = [
+    "build_graph",
+    "evaluate_and_route",
+    "generate_response",
+    "INTERVIEW_FLOWS",
+    "normalize_interview_type",
+]

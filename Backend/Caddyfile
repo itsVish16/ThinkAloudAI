@@ -1,23 +1,38 @@
 http://localhost, api.thinkaloudai.tech {
     encode gzip
 
-    # User Service specific routes
+    # Scalable User Service routes
     handle /api/v1/users* {
         reverse_proxy user-service:8000
     }
-    handle /health {
+    handle /health/live {
+        reverse_proxy user-service:8000
+    }
+    handle /health/ready {
         reverse_proxy user-service:8000
     }
 
-    # AI Interviewer specific routes (catch-all for other /api/)
-    handle /api/* {
+    # AI Interviewer routes
+    handle /api/token* {
+        reverse_proxy ai-interviewer-api:8000
+    }
+    handle /api/interview-types* {
+        reverse_proxy ai-interviewer-api:8000
+    }
+    handle /api/interview* {
+        reverse_proxy ai-interviewer-api:8000
+    }
+    handle /api/interviews* {
+        reverse_proxy ai-interviewer-api:8000
+    }
+    handle /api/leaderboard* {
+        reverse_proxy ai-interviewer-api:8000
+    }
+    handle /api/admin* {
         reverse_proxy ai-interviewer-api:8000
     }
 
-    # Main service specific routes
-    handle /sessions* {
-        reverse_proxy main-service:8001
-    }
+    # Main Service routes
     handle /chat* {
         reverse_proxy main-service:8001
     }
@@ -28,6 +43,24 @@ http://localhost, api.thinkaloudai.tech {
         reverse_proxy main-service:8001
     }
     handle /system-design* {
+        reverse_proxy main-service:8001
+    }
+    handle /behavioral* {
+        reverse_proxy main-service:8001
+    }
+    handle /pm* {
+        reverse_proxy main-service:8001
+    }
+    handle /aiml* {
+        reverse_proxy main-service:8001
+    }
+    handle /dashboard* {
+        reverse_proxy main-service:8001
+    }
+    handle /admin* {
+        reverse_proxy main-service:8001
+    }
+    handle /sessions* {
         reverse_proxy main-service:8001
     }
     handle /users* {

@@ -8,7 +8,18 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Colors */
+  /* Backward Compatibility Mappings from tokens.css */
+  --workspace-bg: var(--color-bg);
+  --workspace-panel: var(--color-surface);
+  --workspace-border: var(--color-rule);
+  
+  --accent-orange: var(--color-accent);
+  --accent-orange-hover: var(--color-accent-hover);
+  --accent-orange-glow: var(--color-accent-glow);
+  
+  --workspace-text: var(--color-text);
+  --workspace-text-muted: var(--color-muted);
+
   --bg-primary: var(--workspace-bg);
   --bg-secondary: var(--workspace-panel);
   --bg-tertiary: var(--workspace-border);
@@ -17,62 +28,21 @@
   --text-secondary: var(--workspace-text);
   --text-muted: var(--workspace-text-muted);
 
-  /* Brand Colors */
-  --brand-blue: var(--accent-orange);
-  --brand-blue-hover: var(--accent-orange-hover);
-  --brand-blue-light: rgba(249, 115, 22, 0.12);
-  --brand-blue-glow: var(--accent-orange-glow);
+  --brand-blue: var(--color-accent);
+  --brand-blue-hover: var(--color-accent-hover);
+  --brand-blue-light: var(--color-accent-glow);
+  --brand-blue-glow: var(--color-accent-glow);
 
   --brand-silver: rgba(255, 255, 255, 0.1);
   --brand-silver-dark: rgba(255, 255, 255, 0.2);
   --brand-silver-light: rgba(255, 255, 255, 0.04);
 
-  /* Special States */
-  --color-success: var(--accent-orange);
-  --color-success-bg: rgba(249, 115, 22, 0.1);
-  --color-warning: #f59e0b;
-  --color-warning-bg: rgba(245, 158, 11, 0.1);
-  --color-error: #ef4444;
-  --color-error-bg: rgba(239, 68, 68, 0.1);
-
-  /* Coding Editor Specific (Dark Theme) */
-  --editor-bg: #0b0f19;
-  --editor-gutter: #0f172a;
-  --editor-text: #e2e8f0;
-  --editor-comment: #64748b;
-  --editor-keyword: #ff7b72;
-  --editor-string: #a5d6ff;
-  --editor-number: #f2cc60;
-  --editor-function: #d2a6ff;
-
-  /* Workspace Dark Mode (Orange/Black) */
-  --workspace-bg: #000000;
-  --workspace-panel: #0D0D0D;
-  --workspace-border: rgba(255, 255, 255, 0.08);
-  --accent-orange: #FF6B00;
-  --accent-orange-hover: #FF8C00;
-  --accent-orange-glow: rgba(255, 107, 0, 0.15);
-  --workspace-text: #f3f4f6;
-  --workspace-text-muted: #9ca3af;
-
-  /* Fonts */
-  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-heading: 'Outfit', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
-
-  /* Shadows */
-  --shadow-sm: 0 2px 8px rgba(255, 255, 255, 0.2);
-  --shadow-md: 0 8px 20px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 16px 36px rgba(0, 0, 0, 0.4);
-  --shadow-premium: 0 24px 60px rgba(21, 128, 61, 0.1);
-  --shadow-silver: 0 10px 30px rgba(255, 255, 255, 0.05);
-
-  /* Borders */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 20px;
-  --radius-xl: 30px;
-  --radius-full: 9999px;
+  --color-success: #00FF88;
+  --color-success-bg: rgba(0, 255, 136, 0.15);
+  --color-warning: #FFD700;
+  --color-warning-bg: rgba(255, 215, 0, 0.15);
+  --color-error: #FF3366;
+  --color-error-bg: rgba(255, 51, 102, 0.15);
 
   /* Transition */
   --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);

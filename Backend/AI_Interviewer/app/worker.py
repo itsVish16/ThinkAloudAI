@@ -4,6 +4,7 @@ import logging
 import time
 import csv
 import os
+from typing import Any, Optional, Dict, List
 from datetime import datetime
 from dotenv import load_dotenv
 from livekit import agents
@@ -13,15 +14,17 @@ from livekit.plugins.speechmatics import TurnDetectionMode
 
 from app.agent.graphs.factory import build_graph, evaluate_and_route
 from app.agent.state import InterviewStage
+from app.config import settings
 from app.services.db import get_interview_session, save_interview_session
 from app.services.events import publish_interview_completed
+from app.services.telemetry import TurnMetrics, get_opik_client
 
 load_dotenv(".env.local", override=True)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("interview_worker")
 
-async def queue_generator(queue: asyncio.Queue, metrics_tracker: dict = None):
+async def queue_generator(queue: asyncio.Queue, metrics_tracker: Any = None):
     """
     Helper async generator that yields chunks from the queue until it receives None.
     """
@@ -31,7 +34,10 @@ async def queue_generator(queue: asyncio.Queue, metrics_tracker: dict = None):
         if token is None:
             break
         if first_token and metrics_tracker is not None:
-            metrics_tracker["first_token_time"] = time.time()
+            if hasattr(metrics_tracker, "record_first_audio_byte"):
+                metrics_tracker.record_first_audio_byte()
+            elif isinstance(metrics_tracker, dict):
+                metrics_tracker["first_token_time"] = time.time()
             first_token = False
         yield token
 
@@ -118,16 +124,12 @@ class InterviewAgent(Agent):
             if eval_result:
                 self.state.update(eval_result)
                 
-                # Check if evaluator triggered NEXT QUESTION
-                evals = self.state.get("evaluations", [])
-                if evals and evals[-1].get("trigger_next_question"):
-                    logger.info("Evaluator triggered NEXT QUESTION! Sending DataChannel message...")
-                    current_idx = self.state.get("active_question_index", 0)
-                    if current_idx < len(self.ai_selected_questions) - 1:
-                        self.state["active_question_index"] = current_idx + 1
-                        self.state["stage"] = "dsa_presentation"
-
-                    payload = json.dumps({"type": "next_question"})
+                # Sync instance-level question index from state (managed by evaluate_and_route)
+                new_idx = self.state.get("active_question_index", 0)
+                if new_idx != getattr(self, "_last_question_index", 0):
+                    self._last_question_index = new_idx
+                    logger.info(f"Advancing to question {new_idx + 1}. Sending next_question DataChannel.")
+                    payload = json.dumps({"type": "next_question", "question_index": new_idx})
                     await self.room.local_participant.publish_data(payload.encode("utf-8"))
                 
                 logger.info(f"Background evaluation completed. Next stage: {self.state['stage']}")
@@ -160,6 +162,10 @@ class InterviewAgent(Agent):
 
     async def trigger_termination(self):
         """Called when the LLM decides the interview is naturally over."""
+        if getattr(self, "_analysis_published", False):
+            logger.info("Analysis already published, skipping duplicate trigger_termination.")
+            return
+        self._analysis_published = True
         logger.info("Initiating self-termination sequence...")
         
         # Trigger Background Analysis via RabbitMQ
@@ -204,17 +210,27 @@ class InterviewAgent(Agent):
             
         self.state["messages"].append({"role": "user", "content": user_text})
         
+        # Calculate turn number
+        turn_number = len([m for m in self.state["messages"] if m.get("role") == "user"])
+
+        # Setup Turn Telemetry
+        metrics = TurnMetrics(
+            room_id=self.room_id,
+            user_id=self.user_id,
+            candidate_name=self.candidate_name,
+            interview_type=self.interview_type,
+            stage=self.state.get("stage", "general"),
+            turn_number=turn_number,
+            user_text=user_text,
+        )
+        self.state["current_turn_metrics"] = metrics
+
         # Setup streaming queue
         queue = asyncio.Queue()
         self.state["stream_queue"] = queue
-        
-        metrics_tracker = {"first_token_time": None}
-
-        pre_graph_time = time.time()
-        print(f"⏱️ [Pipeline] STT → Handler overhead: {(pre_graph_time - turn_start_time) * 1000:.2f} ms")
 
         # Start playing audio from the queue immediately
-        speech_handle = self.session.say(queue_generator(queue, metrics_tracker))
+        speech_handle = self.session.say(queue_generator(queue, metrics))
 
         try:
             # Inject latest async state variables before calling LangGraph
@@ -224,13 +240,13 @@ class InterviewAgent(Agent):
 
             async with self.turn_lock:
                 # Run state graph (this streams LLM tokens into the queue)
-                # This now ONLY runs generate_response sequentially
                 updated_state = await self.interview_agent.ainvoke(self.state)
                 self.state = updated_state
 
             # Persist state after each turn to ensure transcript is never lost
             state_to_save = self.state.copy()
             state_to_save.pop("stream_queue", None)
+            state_to_save.pop("current_turn_metrics", None)
             asyncio.create_task(save_interview_session(
                 session_id=self.room_id,
                 user_id=self.user_id,
@@ -243,28 +259,6 @@ class InterviewAgent(Agent):
             # Fire-and-forget background evaluation
             asyncio.create_task(self.background_evaluate())
             
-            first_token_time = metrics_tracker.get("first_token_time") or time.time()
-            graph_end_time = time.time()
-            
-            stt_overhead = round((pre_graph_time - turn_start_time) * 1000, 2)
-            llm_ttft = round((first_token_time - pre_graph_time) * 1000, 2)
-            total_latency = round((first_token_time - turn_start_time) * 1000, 2)
-            
-            print(f"⏱️ [Pipeline] STT Overhead: {stt_overhead} ms")
-            print(f"⏱️ [Pipeline] LLM TTFT: {llm_ttft} ms")
-            print(f"⏱️ [Pipeline] Total Latency to Audio Start: {total_latency} ms")
-            
-            try:
-                metrics_file = "/workspace/agent_metrics.csv"
-                file_exists = os.path.isfile(metrics_file)
-                with open(metrics_file, mode='a', newline='') as f:
-                    writer = csv.writer(f)
-                    if not file_exists:
-                        writer.writerow(["timestamp", "room_id", "stage", "stt_overhead_ms", "llm_ttft_ms", "total_latency_ms"])
-                    writer.writerow([datetime.utcnow().isoformat(), self.room_id, self.state['stage'], stt_overhead, llm_ttft, total_latency])
-            except Exception as e:
-                logger.error(f"Failed to write metrics to CSV: {e}")
-            
             if self.state["stage"] == InterviewStage.WRAP_UP.value and not self.wrap_up_spoken:
                 self.wrap_up_spoken = True
                 
@@ -276,10 +270,10 @@ class InterviewAgent(Agent):
             # Wait for playback completion
             await speech_handle
             
-            playback_end_time = time.time()
             self.last_interaction_time = time.time()
-            print(f"⏱️ [Pipeline] Total Turn (incl. TTS playback): {(playback_end_time - turn_start_time) * 1000:.2f} ms")
-            print(f"⏱️ [Pipeline] TTS Playback Time (after LLM done): {(playback_end_time - graph_end_time) * 1000:.2f} ms")
+            assistant_messages = [m for m in self.state["messages"] if m.get("role") == "assistant"]
+            last_resp = assistant_messages[-1]["content"] if assistant_messages else ""
+            metrics.record_turn_completed(last_resp)
 
         except asyncio.CancelledError:
             logger.info("Agent turn was interrupted by the user! Cancelling generation...")
@@ -291,7 +285,7 @@ class InterviewAgent(Agent):
             raise
 
 async def entrypoint(ctx: agents.JobContext):
-    logger.info(f"Worker received job request. Room name: {ctx.room.name}, Room ID: {ctx.room.sid}")
+    logger.info(f"Worker received job request. Room name: {ctx.room.name}")
     await ctx.connect()
     logger.info("Connected to room.")
 
@@ -320,16 +314,29 @@ async def entrypoint(ctx: agents.JobContext):
 
     logger.info(f"Extracted metadata: candidate_name={candidate_name}, user_id={user_id}, interview_type={interview_type}, questions={len(ai_selected_questions)}")
 
-    sarvam_key = os.getenv("SARVAM_API_KEY", "").strip()
+    sarvam_key = (settings.SARVAM_API_KEY or os.getenv("SARVAM_API_KEY", "")).strip()
 
     if sarvam_key and not sarvam_key.startswith("<"):
-        logger.info("Initializing Sarvam AI STT and TTS")
+        logger.info(f"Initializing Sarvam AI STT ({settings.SARVAM_STT_MODEL}) and WebSocket TTS ({settings.SARVAM_TTS_MODEL}, speaker={settings.SARVAM_TTS_SPEAKER})")
         from livekit.plugins import sarvam
-        stt = sarvam.STT(model="saaras:v3", language="en-IN")
+        stt_kwargs = {
+            "api_key": sarvam_key,
+            "model": settings.SARVAM_STT_MODEL,
+            "language": settings.SARVAM_STT_LANGUAGE,
+            "mode": "transcribe",
+        }
+        if settings.SARVAM_STT_URL:
+            stt_kwargs["base_url"] = settings.SARVAM_STT_URL
+        stt = sarvam.STT(**stt_kwargs)
         tts = sarvam.TTS(
-            model=os.getenv("SARVAM_TTS_MODEL", "bulbul:v3"),
-            speaker=os.getenv("SARVAM_TTS_SPEAKER", "shubh"),
-            target_language_code="en-IN"
+            api_key=sarvam_key,
+            model=settings.SARVAM_TTS_MODEL,
+            speaker=settings.SARVAM_TTS_SPEAKER,
+            target_language_code=settings.SARVAM_TTS_LANGUAGE,
+            speech_sample_rate=settings.SARVAM_TTS_SAMPLE_RATE,
+            pace=settings.SARVAM_TTS_PACE,
+            ws_url=settings.SARVAM_TTS_WS_URL,
+            send_completion_event=True,
         )
     else:
         logger.info("No dedicated AI voice keys provided. Falling back to OpenAI STT and TTS.")
@@ -473,13 +480,21 @@ async def entrypoint(ctx: agents.JobContext):
             
             if msg_type == "code_update":
                 agent.latest_code = msg.get("code")
+                agent.state["latest_code"] = agent.latest_code
                 logger.info("Received candidate code update.")
             elif msg_type == "design_update":
                 agent.latest_code = msg.get("content")
+                agent.state["latest_code"] = agent.latest_code
                 logger.info("Received candidate design update.")
             elif msg_type == "code_execution":
                 agent.latest_execution = msg.get("execution")
-                logger.info(f"Received candidate code execution result.")
+                agent.state["latest_execution"] = agent.latest_execution
+                if msg.get("code"):
+                    agent.latest_code = msg.get("code")
+                    agent.state["latest_code"] = agent.latest_code
+                agent.last_execution_time = time.time()
+                agent.has_unprompted_execution = True
+                logger.info(f"Received candidate code execution result: {agent.latest_execution}")
         except Exception as e:
             logger.error(f"Error parsing data packet: {e}")
 
@@ -491,10 +506,49 @@ async def entrypoint(ctx: agents.JobContext):
 
     async def silence_monitor_task(agent_instance, session_instance):
         while True:
-            await asyncio.sleep(5)
-            # Only trigger in core problem-solving stages
+            await asyncio.sleep(2)
             core_stages = ["dsa_presentation", "dsa_approach", "dsa_coding", "dsa_testing", "system_design_requirements", "system_design_hld", "system_design_deep_dive"]
-            if agent_instance.state.get("stage") in core_stages:
+            current_stage = agent_instance.state.get("stage")
+
+            # Check if candidate recently executed code and is waiting in silence (3s delay)
+            if current_stage in core_stages and getattr(agent_instance, "has_unprompted_execution", False):
+                if time.time() - getattr(agent_instance, "last_execution_time", 0) > 3.0:
+                    agent_instance.has_unprompted_execution = False
+                    agent_instance.last_interaction_time = time.time()
+
+                    exec_info = agent_instance.state.get("latest_execution") or {}
+                    st = exec_info.get("status", "") if isinstance(exec_info, dict) else str(exec_info)
+                    raw_data = exec_info.get("raw") or {} if isinstance(exec_info, dict) else {}
+                    passed = raw_data.get("passed_tests", 0)
+                    total = raw_data.get("total_tests", 0)
+
+                    if st == "Accepted":
+                        sys_content = f"[SYSTEM: The candidate just ran their code against the test cases and ALL tests passed ({passed}/{total} passed). Acknowledge this result warmly in 1-2 short spoken sentences and ask for their solution's time and space complexity.]"
+                    else:
+                        sys_content = f"[SYSTEM: The candidate ran their code against the test cases with status '{st}' ({passed}/{total} tests passed). Acknowledge the result gently in 1-2 short spoken sentences and ask what they think caused the issue.]"
+
+                    logger.info(f"Triggering proactive AI reaction for code execution: {st}")
+                    agent_instance.state["messages"].append({
+                        "role": "user",
+                        "content": sys_content
+                    })
+                    try:
+                        async with agent_instance.turn_lock:
+                            updated_state = await agent_instance.interview_agent.ainvoke(agent_instance.state)
+                            agent_instance.state = updated_state
+                            
+                            assistant_messages = [msg for msg in agent_instance.state["messages"] if msg["role"] == "assistant"]
+                            if assistant_messages:
+                                last_msg = assistant_messages[-1]["content"]
+                                await session_instance.say(last_msg)
+                            
+                            asyncio.create_task(agent_instance.background_evaluate())
+                    except Exception as e:
+                        logger.error(f"Error in execution reaction task: {e}")
+                    continue
+
+            # Standard silence timeout (40s)
+            if current_stage in core_stages:
                 if time.time() - agent_instance.last_interaction_time > 40:
                     logger.info("Silence timeout reached (40s). Prompting AI...")
                     agent_instance.last_interaction_time = time.time()
@@ -502,35 +556,34 @@ async def entrypoint(ctx: agents.JobContext):
                     # Create a synthetic user message to push the AI
                     agent_instance.state["messages"].append({
                         "role": "user",
-                        "content": "[SYSTEM: The candidate has been silent for 40 seconds. If they are writing code or drawing, acknowledge it briefly. If they are stuck, ask if they need a hint. Max 1 sentence.]"
+                        "content": "[SYSTEM: The candidate has been silent for 40 seconds. If they are writing code or drawing, acknowledge it briefly. If they are stuck, ask if they need a hint. Max 2 sentences.]"
                     })
+                    try:
+                        async with agent_instance.turn_lock:
+                            updated_state = await agent_instance.interview_agent.ainvoke(agent_instance.state)
+                            agent_instance.state = updated_state
+                            
+                            # Get the last assistant message
+                            assistant_messages = [msg for msg in agent_instance.state["messages"] if msg["role"] == "assistant"]
+                            if assistant_messages:
+                                last_msg = assistant_messages[-1]["content"]
+                                await session_instance.say(last_msg)
+                            
+                    except Exception as e:
+                        logger.error(f"Error in silence monitor task: {e}")
             elif agent_instance.state.get("stage") == "wrap_up" and agent_instance.wrap_up_spoken:
                 if time.time() - agent_instance.last_interaction_time > 15:
                     logger.info("Silence timeout in wrap up. Disconnecting.")
                     asyncio.create_task(agent_instance.trigger_termination())
-                    
-            if agent_instance.state.get("stage") in core_stages:
-                try:
-                    async with agent_instance.turn_lock:
-                        updated_state = await agent_instance.interview_agent.ainvoke(agent_instance.state)
-                        agent_instance.state = updated_state
-                        
-                        # Get the last assistant message
-                        assistant_messages = [msg for msg in agent_instance.state["messages"] if msg["role"] == "assistant"]
-                        if assistant_messages:
-                            last_msg = assistant_messages[-1]["content"]
-                            await session_instance.say(last_msg)
-                        
-                except Exception as e:
-                    logger.error(f"Error in silence monitor task: {e}")
 
     @ctx.room.on("disconnected")
     def on_disconnected():
         logger.info("Room disconnected. Saving final session state...")
         state_to_save = agent.state.copy()
         state_to_save.pop("stream_queue", None)
-        # Avoid triggering analysis twice if trigger_termination already did
-        if not agent.state.get("should_end") and agent.state.get("stage") != "intro_audio_check":
+        # Only publish analysis if trigger_termination hasn't already done it
+        if not getattr(agent, "_analysis_published", False) and agent.state.get("stage") != "intro_audio_check":
+            agent._analysis_published = True
             from app.services.rabbitmq import publish_analysis_task
             payload = {
                 "session_id": agent.room_id,
@@ -575,8 +628,8 @@ async def entrypoint(ctx: agents.JobContext):
             logger.warning(f"Could not say initial greeting because session ended: {e}")
             return
 
-        # Seed with a user message so Gemini API has non-empty contents
-        agent.state["messages"].append({"role": "user", "content": f"Hi, I am {candidate_name} and I am ready to start the interview."})
+        # Seed with a clean user entry message
+        agent.state["messages"].append({"role": "user", "content": f"Hi Aarav, I am {agent.candidate_name} and I have joined the interview room."})
 
         agent.state["ai_selected_questions"] = agent.ai_selected_questions
         agent.state["latest_code"] = agent.latest_code

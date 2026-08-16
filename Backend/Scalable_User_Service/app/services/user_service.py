@@ -1,27 +1,27 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from fastapi import HTTPException, status
+from redis.asyncio import Redis
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import verify_password
 from app.models.user import User
-from app.schemas.user import SignupRequest, UpdateUserRequest
+from app.repositories.user_repository import UserRepository
+from app.schemas.user import SignupRequest, UpdateUserRequest, UserResponse
+from app.services.cache import delete_cached_user_profile, set_cached_user_profile
 
 
 async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
-    result = await db.execute(select(User).where(User.email == email))
-    return result.scalar_one_or_none()
+    return await UserRepository.get_by_email(db, email)
 
 
 async def get_user_by_username(db: AsyncSession, username: str) -> User | None:
-    result = await db.execute(select(User).where(User.username == username))
-    return result.scalar_one_or_none()
+    return await UserRepository.get_by_username(db, username)
 
 
-async def get_user_by_id(db: AsyncSession, id: int) -> User | None:
-    result = await db.execute(select(User).where(User.id == id))
-    return result.scalar_one_or_none()
+async def get_user_by_id(db: AsyncSession, user_id: int) -> User | None:
+    return await UserRepository.get_by_id(db, user_id)
 
 
 async def create_user(db: AsyncSession, payload: SignupRequest, password_hash: str) -> User:
@@ -32,18 +32,7 @@ async def create_user(db: AsyncSession, payload: SignupRequest, password_hash: s
         password_hash=password_hash,
         is_verified=False,
     )
-
-    db.add(user)
-
-    try:
-        await db.commit()
-    except IntegrityError:
-        await db.rollback()
-        raise
-
-    await db.refresh(user)
-
-    return user
+    return await UserRepository.create(db, user)
 
 
 async def check_user_password(user: User, password: str) -> bool:
@@ -62,41 +51,57 @@ async def update_user(
         user.full_name = payload.full_name
 
     try:
-        await db.commit()
+        return await UserRepository.save(db, user)
     except IntegrityError:
         await db.rollback()
         raise
-
-    await db.refresh(user)
-    return user
 
 
 async def update_user_password(db: AsyncSession, user: User, password_hash: str) -> User:
     user.password_hash = password_hash
-
     try:
-        await db.commit()
+        return await UserRepository.save(db, user)
     except IntegrityError:
         await db.rollback()
         raise
-
-    await db.refresh(user)
-    return user
 
 
 async def mark_user_verified(db: AsyncSession, user: User) -> User:
     user.is_verified = True
-
     try:
-        await db.commit()
+        return await UserRepository.save(db, user)
     except IntegrityError:
         await db.rollback()
         raise
 
-    await db.refresh(user)
-    return user
-
 
 async def update_last_login(db: AsyncSession, user: User) -> None:
     user.last_login_at = datetime.now(UTC)
-    await db.commit()
+    await UserRepository.save(db, user)
+
+
+class UserService:
+    @staticmethod
+    async def update_me(
+        user: User,
+        payload: UpdateUserRequest,
+        db: AsyncSession,
+        redis: Redis,
+    ) -> dict:
+        try:
+            updated_user = await update_user(db, user, payload)
+        except IntegrityError:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Username already exists",
+            )
+
+        # Publish event
+        await redis.publish("user_events", f"user.updated:{updated_user.id}")
+
+        # Invalidate and refresh cache
+        await delete_cached_user_profile(redis, updated_user.id)
+        response_data = UserResponse.model_validate(updated_user).model_dump(mode="json")
+        await set_cached_user_profile(redis, updated_user.id, response_data)
+
+        return response_data

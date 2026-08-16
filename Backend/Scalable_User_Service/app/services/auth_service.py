@@ -1,43 +1,71 @@
-import time
+import hmac
+from datetime import UTC, datetime
+
 import structlog
-from fastapi import HTTPException, status
+from fastapi import BackgroundTasks, HTTPException, status
+from jose import JWTError, jwt
 from redis.asyncio import Redis
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import BackgroundTasks
 
 from app.config import settings
-from app.core.security import hash_password, verify_password, DUMMY_HASH, generate_otp, create_access_token, create_refresh_token
-from app.schemas.user import SignupRequest, LoginRequest
+from app.core.security import (
+    DUMMY_HASH,
+    create_access_token,
+    create_refresh_token,
+    generate_otp,
+    hash_password,
+    verify_password,
+)
+from app.schemas.user import (
+    ForgotPasswordRequest,
+    LoginRequest,
+    LogoutRequest,
+    RefreshTokenRequest,
+    ResendVerificationRequest,
+    ResetPasswordRequest,
+    SignupRequest,
+    VerifyEmailRequest,
+)
 from app.services.cache import (
-    get_login_attempts,
-    increment_login_attempts,
-    reset_login_attempts,
     MAX_LOGIN_ATTEMPTS,
-    set_email_verification_token
+    blacklist_token,
+    delete_cached_user_profile,
+    delete_email_verification_token,
+    delete_password_reset_token,
+    get_email_verification_token,
+    get_login_attempts,
+    get_password_reset_token,
+    increment_login_attempts,
+    is_token_blacklisted,
+    reset_login_attempts,
+    set_email_verification_token,
+    set_password_reset_token,
 )
+from app.services.email_queue import enqueue_email
 from app.services.user_service import (
-    get_user_by_email,
-    get_user_by_username,
     create_user,
-    update_last_login
+    get_user_by_email,
+    get_user_by_id,
+    get_user_by_username,
+    mark_user_verified,
+    update_last_login,
+    update_user_password,
 )
-from app.services.sqs_publisher import publish_email_task
 
 logger = structlog.get_logger(__name__)
 
+
 class AuthService:
-    
     @staticmethod
-    async def signup(payload: SignupRequest, background_tasks: BackgroundTasks, db: AsyncSession, redis: Redis):
-        start_time = time.time()
+    async def signup(
+        payload: SignupRequest,
+        background_tasks: BackgroundTasks,
+        db: AsyncSession,
+        redis: Redis,
+    ) -> str:
         existing_email = await get_user_by_email(db, str(payload.email))
-        t_db1 = time.time()
-        logger.info(f"PERF_LOG: get_user_by_email took {t_db1 - start_time:.4f}s")
-        
         existing_username = await get_user_by_username(db, payload.username)
-        t_db2 = time.time()
-        logger.info(f"PERF_LOG: get_user_by_username took {t_db2 - t_db1:.4f}s")
 
         if existing_email is not None:
             if existing_email.is_verified:
@@ -51,20 +79,14 @@ class AuthService:
                         status_code=status.HTTP_409_CONFLICT,
                         detail="Username is already taken",
                     )
-                
-                t_hash_start = time.time()
+
                 password_hash = await hash_password(payload.password)
-                t_hash_end = time.time()
-                logger.info(f"PERF_LOG: hash_password took {t_hash_end - t_hash_start:.4f}s")
-                
                 existing_email.username = payload.username
                 existing_email.full_name = payload.full_name
                 existing_email.password_hash = password_hash
                 try:
-                    t_commit_start = time.time()
                     await db.commit()
                     await db.refresh(existing_email)
-                    logger.info(f"PERF_LOG: db_commit_update took {time.time() - t_commit_start:.4f}s")
                 except IntegrityError:
                     await db.rollback()
                     raise HTTPException(
@@ -79,15 +101,9 @@ class AuthService:
                     detail="Username is already taken",
                 )
 
-            t_hash_start = time.time()
             password_hash = await hash_password(payload.password)
-            t_hash_end = time.time()
-            logger.info(f"PERF_LOG: hash_password took {t_hash_end - t_hash_start:.4f}s")
-            
             try:
-                t_create_start = time.time()
                 user = await create_user(db, payload, password_hash)
-                logger.info(f"PERF_LOG: create_user (db) took {time.time() - t_create_start:.4f}s")
             except IntegrityError:
                 await db.rollback()
                 raise HTTPException(
@@ -96,24 +112,16 @@ class AuthService:
                 )
 
         verification_otp = generate_otp()
-        
-        t_redis_start = time.time()
         await set_email_verification_token(redis, str(user.email), verification_otp)
-        logger.info(f"PERF_LOG: redis_set_token took {time.time() - t_redis_start:.4f}s")
-        
         await redis.publish("user_events", f"user.created:{user.id}")
-        
+
         logger.info("verification_otp_generated", email=str(user.email))
-        
-        t_bg_start = time.time()
-        background_tasks.add_task(publish_email_task, "verification_email", str(user.email), {"otp": verification_otp})
-        logger.info(f"PERF_LOG: add_bg_tasks took {time.time() - t_bg_start:.4f}s")
-        logger.info(f"PERF_LOG: TOTAL REQUEST TIME took {time.time() - start_time:.4f}s")
-        
+        background_tasks.add_task(enqueue_email, "verification_email", str(user.email), {"otp": verification_otp})
+
         return verification_otp
 
     @staticmethod
-    async def login(payload: LoginRequest, db: AsyncSession, redis: Redis):
+    async def login(payload: LoginRequest, db: AsyncSession, redis: Redis) -> tuple[str, str]:
         attempts = await get_login_attempts(redis, str(payload.email))
         if attempts >= MAX_LOGIN_ATTEMPTS:
             raise HTTPException(
@@ -128,7 +136,7 @@ class AuthService:
             await increment_login_attempts(redis, str(payload.email))
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect email or password",
+                detail="Invalid email or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
@@ -136,7 +144,7 @@ class AuthService:
             await increment_login_attempts(redis, str(payload.email))
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect email or password",
+                detail="Invalid email or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
@@ -149,7 +157,211 @@ class AuthService:
         await reset_login_attempts(redis, str(payload.email))
         await update_last_login(db, user)
 
-        access_token = create_access_token(data={"sub": str(user.id), "email": str(user.email), "type": "access"})
-        refresh_token = create_refresh_token(data={"sub": str(user.id), "email": str(user.email), "type": "refresh"})
+        access_token = create_access_token(
+            subject=str(user.id),
+            username=user.username,
+            email=str(user.email),
+        )
+        refresh_token = create_refresh_token(
+            subject=str(user.id),
+            username=user.username,
+            email=str(user.email),
+        )
 
         return access_token, refresh_token
+
+    @staticmethod
+    async def refresh_token(
+        payload: RefreshTokenRequest,
+        db: AsyncSession,
+        redis: Redis,
+    ) -> dict:
+        credentials_exception = HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
+
+        try:
+            decode_payload = jwt.decode(
+                payload.refresh_token,
+                settings.JWT_SECRET_KEY,
+                algorithms=[settings.algorithm],
+            )
+            user_id = decode_payload.get("sub")
+            token_type = decode_payload.get("type")
+            jti = decode_payload.get("jti")
+
+            if user_id is None or token_type != "refresh" or jti is None:
+                raise credentials_exception
+        except JWTError:
+            raise credentials_exception
+
+        if await is_token_blacklisted(redis, jti):
+            raise credentials_exception
+
+        user = await get_user_by_id(db, int(user_id))
+        if user is None:
+            raise credentials_exception
+
+        exp = decode_payload.get("exp", 0)
+        remaining_ttl = max(int(exp - datetime.now(UTC).timestamp()), 1)
+        await blacklist_token(redis, jti, remaining_ttl)
+
+        new_access_token = create_access_token(
+            subject=str(user.id),
+            username=user.username,
+            email=str(user.email),
+        )
+        new_refresh_token = create_refresh_token(
+            subject=str(user.id),
+            username=user.username,
+            email=str(user.email),
+        )
+
+        return {
+            "access_token": new_access_token,
+            "refresh_token": new_refresh_token,
+            "token_type": "bearer",
+        }
+
+    @staticmethod
+    async def logout(
+        token: str,
+        payload: LogoutRequest,
+        redis: Redis,
+    ) -> dict:
+        # Blacklist access token
+        try:
+            access_payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.algorithm])
+            access_jti = access_payload.get("jti")
+            if access_jti:
+                exp = access_payload.get("exp", 0)
+                remaining_ttl = max(int(exp - datetime.now(UTC).timestamp()), 1)
+                await blacklist_token(redis, access_jti, remaining_ttl)
+        except JWTError:
+            pass
+
+        # Blacklist refresh token
+        try:
+            refresh_payload = jwt.decode(
+                payload.refresh_token,
+                settings.JWT_SECRET_KEY,
+                algorithms=[settings.algorithm],
+            )
+            refresh_jti = refresh_payload.get("jti")
+            if refresh_jti:
+                exp = refresh_payload.get("exp", 0)
+                remaining_ttl = max(int(exp - datetime.now(UTC).timestamp()), 1)
+                await blacklist_token(redis, refresh_jti, remaining_ttl)
+        except JWTError:
+            pass
+
+        return {"message": "Logged out successfully"}
+
+    @staticmethod
+    async def forgot_password(
+        payload: ForgotPasswordRequest,
+        background_tasks: BackgroundTasks,
+        db: AsyncSession,
+        redis: Redis,
+    ) -> dict:
+        user = await get_user_by_email(db, str(payload.email))
+
+        if user is not None:
+            reset_otp = generate_otp()
+            await set_password_reset_token(redis, str(payload.email), reset_otp)
+            logger.info("password_reset_otp_generated", email=str(payload.email))
+            background_tasks.add_task(
+                enqueue_email, "password_reset_email", str(payload.email), {"otp": reset_otp}
+            )
+
+            if settings.debug:
+                return {"message": f"Password reset OTP generated: {reset_otp}"}
+
+        return {"message": "If the email exists, password reset instructions are ready."}
+
+    @staticmethod
+    async def reset_password(
+        payload: ResetPasswordRequest,
+        db: AsyncSession,
+        redis: Redis,
+    ) -> dict:
+        user = await get_user_by_email(db, str(payload.email))
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid reset request",
+            )
+
+        stored_token = await get_password_reset_token(redis, str(payload.email))
+        if stored_token is None or not hmac.compare_digest(stored_token, payload.otp):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired reset token",
+            )
+
+        password_hash = await hash_password(payload.new_password)
+        await update_user_password(db, user, password_hash)
+        await delete_password_reset_token(redis, str(payload.email))
+        await delete_cached_user_profile(redis, user.id)
+
+        return {"message": "Password reset successful"}
+
+    @staticmethod
+    async def verify_email(
+        payload: VerifyEmailRequest,
+        background_tasks: BackgroundTasks,
+        db: AsyncSession,
+        redis: Redis,
+    ) -> dict:
+        user = await get_user_by_email(db, str(payload.email))
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid verification request",
+            )
+
+        stored_token = await get_email_verification_token(redis, str(payload.email))
+        if stored_token is None or not hmac.compare_digest(stored_token, payload.token):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired verification token",
+            )
+
+        await mark_user_verified(db, user)
+        await redis.publish("user_events", f"user.verified:{user.id}")
+
+        await delete_email_verification_token(redis, str(payload.email))
+        await delete_cached_user_profile(redis, user.id)
+        background_tasks.add_task(
+            enqueue_email, "welcome_email", str(user.email), {"full_name": user.full_name}
+        )
+
+        return {"message": "Email verified successfully"}
+
+    @staticmethod
+    async def resend_verification(
+        payload: ResendVerificationRequest,
+        background_tasks: BackgroundTasks,
+        db: AsyncSession,
+        redis: Redis,
+    ) -> dict:
+        user = await get_user_by_email(db, str(payload.email))
+
+        if user is None:
+            return {"message": "If the email exists, verification instructions are ready."}
+
+        if user.is_verified:
+            return {"message": "Email is already verified"}
+
+        verification_otp = generate_otp()
+        await set_email_verification_token(redis, str(payload.email), verification_otp)
+        logger.info("verification_otp_regenerated", email=str(payload.email))
+        background_tasks.add_task(
+            enqueue_email, "verification_email", str(payload.email), {"otp": verification_otp}
+        )
+
+        if settings.debug:
+            return {"message": f"Verification OTP generated: {verification_otp}"}
+
+        return {"message": "If the email exists, verification instructions are ready."}

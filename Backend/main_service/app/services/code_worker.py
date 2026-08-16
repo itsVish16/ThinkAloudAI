@@ -1,12 +1,11 @@
 import asyncio
 import json
 import logging
-from aio_pika import connect_robust
+from aio_pika import connect_robust, IncomingMessage
 from app.config import settings
-from app.database import SessionLocal, get_redis
+from app.database import SessionLocal, redis_client
 from app.models.dsa import CodeSubmission
 from app.services.docker_runner import run_code_in_docker
-import redis.asyncio as aioredis
 from sqlalchemy.future import select
 
 logger = logging.getLogger(__name__)
@@ -44,15 +43,13 @@ async def process_code_execution(data: dict):
                 await db.commit()
 
         # Publish the result to Redis for SSE listeners
-        from app.database import redis_client as redis
-        await redis.publish(f"submission_updates_{submission_id}", json.dumps(docker_result))
+        await redis_client.publish(f"submission_updates_{submission_id}", json.dumps(docker_result))
         
     except Exception as e:
         logger.error(f"Execution failed for submission {submission_id}: {e}")
         # Try to publish error state
         try:
-            from app.database import redis_client as redis
-            await redis.publish(f"submission_updates_{submission_id}", json.dumps({
+            await redis_client.publish(f"submission_updates_{submission_id}", json.dumps({
                 "status": "Error",
                 "error_message": str(e)
             }))
@@ -64,27 +61,42 @@ async def process_code_execution(data: dict):
                     sub.status = "Error"
                     sub.error_message = str(e)
                     await db.commit()
-        except Exception:
-            pass
+        except Exception as db_err:
+            logger.error(f"Failed to update error status for submission {submission_id}: {db_err}")
+
+
+async def handle_code_message(message: IncomingMessage, semaphore: asyncio.Semaphore):
+    """
+    Processes a single code execution message with explicit acknowledgment and retry handling.
+    ACK happens strictly after task completion.
+    """
+    async with semaphore:
+        try:
+            body = message.body.decode()
+            data = json.loads(body)
+            await process_code_execution(data)
+            await message.ack()
+        except json.JSONDecodeError as e:
+            logger.error(f"Malformed JSON in code execution queue message: {e}")
+            await message.reject(requeue=False)
+        except Exception as e:
+            logger.error(f"Error executing code task: {e}")
+            await message.reject(requeue=True)
+
 
 async def start_code_worker():
     """
-    Listens to code_execution_queue and processes code runs.
+    Listens to code_execution_queue and processes code runs with concurrency control
+    and reliable acknowledgment after task completion.
     """
     rabbitmq_url = settings.RABBITMQ_URL if hasattr(settings, 'RABBITMQ_URL') else "amqp://guest:guest@localhost:5672/"
-    
-    # Limit concurrent executions to 5
     semaphore = asyncio.Semaphore(5)
-    
-    async def process_with_semaphore(data):
-        async with semaphore:
-            await process_code_execution(data)
     
     while True:
         try:
             connection = await connect_robust(rabbitmq_url)
             channel = await connection.channel()
-            # Prefetch count determines how many concurrent jobs this worker takes
+            # Prefetch count determines how many concurrent unacked jobs this worker takes
             await channel.set_qos(prefetch_count=5)
             
             queue = await channel.declare_queue("code_execution_queue", durable=True)
@@ -92,14 +104,11 @@ async def start_code_worker():
             
             async with queue.iterator() as queue_iter:
                 async for message in queue_iter:
-                    async with message.process():
-                        try:
-                            data = json.loads(message.body.decode())
-                            # Use a semaphore to limit concurrent executions
-                            asyncio.create_task(process_with_semaphore(data))
-                        except Exception as e:
-                            logger.error(f"Error processing code execution message: {e}")
+                    asyncio.create_task(handle_code_message(message, semaphore))
                             
+        except asyncio.CancelledError:
+            logger.info("Code worker task cancelled.")
+            break
         except Exception as e:
             logger.error(f"RabbitMQ connection failed in code worker: {e}. Retrying in 5 seconds...")
             try:

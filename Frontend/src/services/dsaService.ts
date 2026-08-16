@@ -43,6 +43,98 @@ export async function getDSAQuestionById(id: string | number): Promise<APIDSAQue
   return response.json();
 }
 
+export async function waitForSubmissionResult(submissionId: number | string): Promise<CodeSubmitResponse> {
+  const streamUrl = `${API_URL}/dsa/submissions/${submissionId}/stream`;
+  
+  return new Promise((resolve) => {
+    let resolved = false;
+    const finish = (result: CodeSubmitResponse) => {
+      if (!resolved) {
+        resolved = true;
+        resolve(result);
+      }
+    };
+
+    // Timeout safety after 45s
+    const timer = setTimeout(() => {
+      finish({
+        status: 'Time Limit Exceeded',
+        passed_tests: 0,
+        total_tests: 0,
+        error_message: 'Code evaluation timed out waiting for worker.',
+        execution_time_ms: 0,
+      });
+    }, 45000);
+
+    try {
+      const eventSource = new EventSource(streamUrl);
+      
+      eventSource.addEventListener('result', (e: MessageEvent) => {
+        clearTimeout(timer);
+        eventSource.close();
+        try {
+          const data = JSON.parse(e.data);
+          finish({
+            status: data.status || 'Error',
+            passed_tests: data.passed_tests ?? 0,
+            total_tests: data.total_tests ?? 0,
+            error_message: data.error_message || null,
+            execution_time_ms: data.execution_time_ms || 0,
+          });
+        } catch {
+          finish({
+            status: 'Error',
+            passed_tests: 0,
+            total_tests: 0,
+            error_message: 'Failed to parse worker response.',
+            execution_time_ms: 0,
+          });
+        }
+      });
+
+      eventSource.onerror = () => {
+        eventSource.close();
+        // Fallback polling loop
+        const poll = async () => {
+          for (let i = 0; i < 15; i++) {
+            await new Promise((r) => setTimeout(r, 2000));
+            if (resolved) return;
+            try {
+              const res = await apiClient.fetchWithAuth(`${API_URL}/dsa/submissions/${submissionId}/stream`);
+              const text = await res.text();
+              if (text.includes('event: result')) {
+                const match = text.match(/data: ({.*})/);
+                if (match && match[1]) {
+                  const data = JSON.parse(match[1]);
+                  clearTimeout(timer);
+                  finish({
+                    status: data.status || 'Error',
+                    passed_tests: data.passed_tests ?? 0,
+                    total_tests: data.total_tests ?? 0,
+                    error_message: data.error_message || null,
+                    execution_time_ms: data.execution_time_ms || 0,
+                  });
+                  return;
+                }
+              }
+            } catch { }
+          }
+        };
+        poll();
+      };
+    } catch {
+      clearTimeout(timer);
+      finish({
+        status: 'Error',
+        passed_tests: 0,
+        total_tests: 0,
+        error_message: 'Failed to open event stream.',
+        execution_time_ms: 0,
+      });
+    }
+  });
+}
+
 export async function submitDSACode(id: string | number, code: string, language: string, sessionId: string): Promise<CodeSubmitResponse> {
   const response = await apiClient.fetchWithAuth(`${API_URL}/dsa/questions/${id}/submit`, {
     method: 'POST',
@@ -55,7 +147,11 @@ export async function submitDSACode(id: string | number, code: string, language:
   if (!response.ok) {
     throw new Error(`Failed to submit code for question ${id}`);
   }
-  return response.json();
+  const initData = await response.json();
+  if (initData.status === 'Pending' && initData.submission_id) {
+    return await waitForSubmissionResult(initData.submission_id);
+  }
+  return initData;
 }
 export async function getLatestSubmission(id: string | number, language?: string): Promise<{ code: string; status: string } | null> {
   const url = new URL(`${API_URL}/dsa/questions/${id}/submission`);
@@ -98,7 +194,11 @@ export async function runDSACode(id: string | number, code: string, language: st
   if (!response.ok) {
     throw new Error(`Failed to run code for question ${id}`);
   }
-  return response.json();
+  const initData = await response.json();
+  if (initData.status === 'Pending' && initData.submission_id) {
+    return await waitForSubmissionResult(initData.submission_id);
+  }
+  return initData;
 }
 
 export async function getDSAProfileStats(token: string): Promise<any> {

@@ -53,7 +53,7 @@ async def get_current_user(request: Request) -> dict:
         # Stateless JWT verification using shared secret key
         payload = jwt.decode(
             token,
-            settings.JWT_SECRET_KEY, 
+            settings.jwt_secret, 
             algorithms=[settings.JWT_ALGORITHM]
         )
         

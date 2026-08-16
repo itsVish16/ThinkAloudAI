@@ -14,7 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.user import router as user_router
-from app.api.v1.admin import router as admin_router
+from app.api.admin import router as admin_router
 from app.config import settings
 from app.core.logging import configure_logging
 from app.core.rate_limit import limiter
@@ -40,9 +40,17 @@ async def lifespan(app: FastAPI):
     logger.info("Starting up — initializing connections")
     await get_redis()
 
+    from app.services.email_queue import email_worker_loop
+    stop_event = asyncio.Event()
+    worker_task = asyncio.create_task(email_worker_loop(stop_event))
+
     yield
 
     logger.info("Shutting down — cleaning up connections")
+    stop_event.set()
+    worker_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await worker_task
 
     await close_redis()
     await engine.dispose()

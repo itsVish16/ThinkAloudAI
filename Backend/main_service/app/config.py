@@ -10,6 +10,7 @@ elif os.path.exists("../.env"):
 else:
     dotenv.load_dotenv()
 
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -20,25 +21,27 @@ class Settings(BaseSettings):
     FIREWORKS_BASE_URL: str = "https://api.fireworks.ai/inference/v1"
     FIREWORKS_API_KEY: str = ""
     FIREWORKS_MODEL: str = "accounts/fireworks/routers/glm-5p2-fast"
-    DATABASE_URL: str
-    JWT_SECRET_KEY: str
+    DATABASE_URL: str = "postgresql+asyncpg://thinkaloud:thinkaloud_dev@localhost:5432/main_service"
+    JWT_SECRET_KEY: str = "dev-secret-key-change-me"
     JWT_ALGORITHM: str = "HS256"
-    E2B_API_KEY: str = "replace_me_in_env"
-    OPIK_API_KEY: str = "replace_me_in_env"
+    E2B_API_KEY: str = ""
+    OPIK_API_KEY: str = ""
     OPIK_WORKSPACE: str = "default"
     OPIK_PROJECT_NAME: str = "ThinkAloud.ai"
-    REDIS_URL: str = "redis://localhost:6379"
-    RABBITMQ_URL: str = "amqp://guest:guest@rabbitmq:5672/"
+    REDIS_URL: str = "redis://localhost:6379/1"
+    RABBITMQ_URL: str = "amqp://guest:guest@localhost:5672/"
     SPEECHMATICS_API_KEY: str = ""
     USER_SERVICE_URL: str = "http://localhost:8000"
     TAVILY_API_KEY: str = ""
+    ADMIN_EMAILS: str = "vishal@example.com,vishal@thinkaloud.ai,vishalsaini160204@gmail.com"
     CORS_ALLOWED_ORIGINS: str = (
-        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000"
+        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000"
     )
 
     @property
     def cors_allowed_origins_list(self) -> list[str]:
         origins = [origin.strip() for origin in self.CORS_ALLOWED_ORIGINS.split(",") if origin.strip()]
         return origins or ["http://localhost:5173"]
+
 
 settings = Settings()

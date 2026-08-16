@@ -31,10 +31,12 @@ class CodeSubmitRequest(BaseModel):
 
 class CodeSubmitResponse(BaseModel):
     status: str
-    passed_tests: int
-    total_tests: int
+    passed_tests: int = 0
+    total_tests: int = 0
     error_message: Optional[str] = None
-    execution_time_ms: float
+    execution_time_ms: float = 0.0
+    submission_id: Optional[int] = None
+    output: Optional[str] = None
 
 class CodeSubmissionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)

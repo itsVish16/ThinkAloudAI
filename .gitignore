@@ -68,6 +68,7 @@ node_modules/
 .next/
 .vite/
 coverage/
+web/
 
 # Vendored Lambda build output; keep only source files and requirements.
 Backend/Scalable_User_Service/infra/lambda_email_sender/bin/

@@ -81,16 +81,15 @@ class ChatService:
                 db_messages = list(msg_result.scalars().all())
                 
                 # Merge with Redis buffer
-                raw_buffer = await redis_client.lrange("chat:buffer", 0, -1)
+                raw_buffer = await redis_client.lrange(f"chat:buffer:{session_id}", 0, -1)
                 for raw in raw_buffer:
                     try:
                         msg_data = json.loads(raw)
-                        if msg_data.get("session_id") == session_id:
-                            db_messages.append(ChatMessageModel(
-                                session_id=session_id,
-                                role=msg_data["role"],
-                                content=msg_data["content"]
-                            ))
+                        db_messages.append(ChatMessageModel(
+                            session_id=session_id,
+                            role=msg_data["role"],
+                            content=msg_data["content"]
+                        ))
                     except Exception:
                         pass
                 
