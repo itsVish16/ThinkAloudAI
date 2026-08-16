@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     )
 
     debug: bool = False
-    DATABASE_URL: str = "postgresql+asyncpg://userservice:userservice@localhost:5432/userservice"
+    DATABASE_URL: str = "postgresql+asyncpg://thinkaloud:thinkaloud_dev@localhost:5432/user_service"
     REDIS_URL: str = "redis://localhost:6379/0"
     db_pool_size: int = 20
     db_max_overflow: int = 20
@@ -39,11 +39,16 @@ class Settings(BaseSettings):
     # With 4 workers on 8 cores: each worker gets 2 concurrent hashes max (8 total).
     bcrypt_concurrency: int = cpu_count() or 4
 
+    SECRET_KEY: str | None = None
     JWT_SECRET_KEY: str = "dev-secret-key-change-me"
     algorithm: str = "HS256"
     jwt_issuer: str = "scalable-user-service"
     access_token_expire_minutes: int = 30
     refresh_token_expire_minutes: int = 10080
+
+    def model_post_init(self, __context) -> None:
+        if self.SECRET_KEY and self.JWT_SECRET_KEY == "dev-secret-key-change-me":
+            self.JWT_SECRET_KEY = self.SECRET_KEY
 
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""

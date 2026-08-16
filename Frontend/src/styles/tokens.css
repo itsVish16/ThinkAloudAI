@@ -1,89 +1,85 @@
-/* Hallmark design tokens — ThinkAloudAI landing
- * theme: custom · vibe: "true black, orange highlight, white type" — matches dashboard palette
- * paper: oklch(10% 0.003 50) · accent: oklch(67% 0.196 48) (#FF6B00 family)
- * display: Space Grotesk · body: Geist · mono: JetBrains Mono
- * axes: dark / grotesk-sans / warm
- * dashboard parity: --workspace-bg #000 · --workspace-panel #0D0D0D · --accent-orange #FF6B00
+/* ThinkAloudAI — Industrial Blueprint Design Tokens
+ * theme: brutalist-tech
+ * bg: #000000 (Black) · accent: #00F0FF (Cyan)
+ * display: Inter/Space Grotesk · mono: JetBrains Mono
+ * axes: dark / strict grid / hyper-precise / tech
  */
 
 :root {
-  /* ---- Colour: paper (true black family, no brown tint) ---- */
-  --color-paper: oklch(10% 0.003 50);
-  --color-paper-2: oklch(13% 0.003 50);
-  --color-paper-3: oklch(17% 0.004 50);
+  /* ---- Colour: Backgrounds (Deep Obsidian/Zinc) ---- */
+  --color-bg: #000000;
+  --color-surface: #09090B;
+  --color-surface-elevated: #18181B;
 
-  /* ---- Colour: ink (white family) ---- */
-  --color-ink: oklch(96% 0.003 60);
-  --color-ink-2: oklch(78% 0.004 60);
-  --color-muted: oklch(62% 0.005 55);
+  /* ---- Colour: Text (Stark White/Gray) ---- */
+  --color-text: #FAFAFA;
+  --color-muted: #A1A1AA;
+  --color-dim: #52525B;
 
-  /* ---- Colour: neutrals / rules (dashboard: rgba(255,255,255,0.08)) ---- */
-  --color-rule: oklch(25% 0.004 55);
-  --color-rule-2: oklch(20% 0.004 55);
-  --color-neutral: oklch(46% 0.005 55);
+  /* ---- Colour: Neutrals / Borders (Hairlines) ---- */
+  --color-rule: #27272A;
+  --color-rule-2: #3F3F46;
 
-  /* ---- Colour: accent (#FF6B00 → hover #FF8C00, dashboard parity) ---- */
-  --color-accent: oklch(67% 0.196 48);
-  --color-accent-hover: oklch(73% 0.178 55);
-  --color-accent-soft: oklch(24% 0.03 48);
-  --color-accent-ink: oklch(14% 0.004 50);
-  --color-focus: oklch(72% 0.19 50);
-  --color-silver: oklch(85% 0.004 260);
+  /* ---- Colour: Accent (Electric Cyan) ---- */
+  --color-accent: #00F0FF; 
+  --color-accent-hover: #00D5FF; 
+  --color-accent-glow: rgba(0, 240, 255, 0.15);
+  
+  /* ---- Surfaces (No Glass, No Shadows) ---- */
+  --glass-bg: transparent;
+  --glass-bg-strong: transparent;
+  --glass-border: #27272A;
+  --glass-shadow: none;
+  --glass-blur: none;
 
-  /* ---- Glass surfaces (dark, neutral) ---- */
-  --glass-bg: oklch(16% 0.004 50 / 0.58);
-  --glass-bg-strong: oklch(17% 0.004 50 / 0.80);
-  --glass-border: oklch(96% 0.003 60 / 0.10);
-  --glass-shadow: 0 12px 40px -12px oklch(0% 0 0 / 0.6);
-  --glass-blur: blur(18px) saturate(130%);
-
-  /* ---- Ambient washes (orange glow only, static) ---- */
-  --ambient-1: radial-gradient(48rem 30rem at 82% -10%, oklch(52% 0.14 46 / 0.34), transparent 65%);
-  --ambient-2: radial-gradient(40rem 28rem at -12% 38%, oklch(42% 0.09 44 / 0.26), transparent 62%);
-  --ambient-3: radial-gradient(36rem 26rem at 74% 88%, oklch(45% 0.10 46 / 0.22), transparent 62%);
-  --cta-bloom: radial-gradient(28rem 15rem at 50% 118%, oklch(56% 0.15 47 / 0.42), transparent 70%);
-  --hero-glow: radial-gradient(34rem 20rem at 50% 62%, oklch(58% 0.16 47 / 0.38), transparent 72%);
+  /* ---- Ambient washes (None) ---- */
+  --ambient-1: none;
+  --ambient-2: none;
+  --ambient-3: none;
+  --cta-bloom: none;
+  --hero-glow: none;
 
   /* ---- Typography ---- */
-  --font-display: "Space Grotesk", "Geist", ui-sans-serif, system-ui, sans-serif;
-  --font-body: "Geist Variable", "Geist", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-display: "Space Grotesk", "Inter", sans-serif;
+  --font-body: "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", "Geist Mono", monospace;
 
-  --text-xs: 0.64rem;
-  --text-sm: 0.8rem;
+  /* ---- Typography Scale ---- */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
   --text-base: 1rem;
-  --text-md: 1.25rem;
-  --text-lg: 1.5625rem;
-  --text-xl: 1.9531rem;
-  --text-2xl: 2.4414rem;
-  --text-3xl: 3.0518rem;
-  --text-display: clamp(2.75rem, 5vw + 1rem, 5.25rem);
+  --text-md: 1.125rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 2rem;
+  --text-3xl: 3rem;
+  --text-display: clamp(3.5rem, 6vw + 1rem, 6.5rem);
 
-  /* ---- Spacing (4pt scale) ---- */
+  /* ---- Spacing (Strict Grid Scale) ---- */
   --space-3xs: 0.125rem;
   --space-2xs: 0.25rem;
   --space-xs: 0.5rem;
   --space-sm: 0.75rem;
   --space-md: 1rem;
   --space-lg: 1.5rem;
-  --space-xl: 2.5rem;
+  --space-xl: 2rem;
   --space-2xl: 4rem;
   --space-3xl: 6rem;
-  --space-4xl: 9rem;
+  --space-4xl: 8rem;
 
-  /* ---- Motion ---- */
+  /* ---- Motion (Instant/Snappy) ---- */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
-  --dur-micro: 120ms;
-  --dur-short: 220ms;
-  --dur-long: 420ms;
+  --dur-micro: 100ms;
+  --dur-short: 150ms;
+  --dur-long: 300ms;
 
-  /* ---- Radii & rules ---- */
-  --radius-sm: 8px;
-  --radius-md: 14px;
-  --radius-lg: 22px;
-  --radius-xl: 28px;
+  /* ---- Radii & rules (Zero Radius, Hairline borders) ---- */
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
   --rule-hair: 1px;
 
   /* ---- Z-index scale ---- */

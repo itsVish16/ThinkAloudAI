@@ -13,85 +13,61 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/chat': {
-        target: 'http://44.244.222.102:8001',
-        changeOrigin: true,
-        secure: false,
-      },
       '/api/v1/users': {
-        target: 'http://44.244.222.102:8000',
+        target: 'http://localhost:8000',
         changeOrigin: true,
-        secure: false,
       },
       '/api/v1/admin': {
-        target: 'http://44.244.222.102:8000',
+        target: 'http://localhost:8000',
         changeOrigin: true,
-        secure: false,
       },
-      '/api/token': {
-        target: 'http://44.244.222.102:8002',
+      '/api': {
+        target: 'http://localhost:8002',
         changeOrigin: true,
-        secure: false,
       },
-      '/api/interview-types': {
-        target: 'http://44.244.222.102:8002',
+      '/chat': {
+        target: 'http://localhost:8001',
         changeOrigin: true,
-        secure: false,
-      },
-      '/api/interview': {
-        target: 'http://44.244.222.102:8002',
-        changeOrigin: true,
-        secure: false,
-      },
-      '/api/interviews': {
-        target: 'http://44.244.222.102:8002',
-        changeOrigin: true,
-        secure: false,
-      },
-      '/api/admin': {
-        target: 'http://44.244.222.102:8002',
-        changeOrigin: true,
-        secure: false,
-      },
-      '/api/leaderboard': {
-        target: 'http://44.244.222.102:8002',
-        changeOrigin: true,
-        secure: false,
-      },
-      '/sessions': {
-        target: 'http://44.244.222.102:8001',
-        changeOrigin: true,
-        secure: false,
-      },
-      '/roadmaps': {
-        target: 'http://44.244.222.102:8001',
-        changeOrigin: true,
-        secure: false,
       },
       '/dsa': {
-        target: 'http://44.244.222.102:8001',
+        target: 'http://localhost:8001',
         changeOrigin: true,
-        secure: false,
       },
-      '/auth': {
-        target: 'http://44.244.222.102:8001',
+      '/roadmaps': {
+        target: 'http://localhost:8001',
         changeOrigin: true,
-        secure: false,
+      },
+      '/system-design': {
+        target: 'http://localhost:8001',
+        changeOrigin: true,
+      },
+      '/behavioral': {
+        target: 'http://localhost:8001',
+        changeOrigin: true,
+      },
+      '/pm': {
+        target: 'http://localhost:8001',
+        changeOrigin: true,
+      },
+      '/aiml': {
+        target: 'http://localhost:8001',
+        changeOrigin: true,
+      },
+      '/dashboard': {
+        target: 'http://localhost:8001',
+        changeOrigin: true,
+      },
+      '/admin': {
+        target: 'http://localhost:8001',
+        changeOrigin: true,
+      },
+      '/sessions': {
+        target: 'http://localhost:8001',
+        changeOrigin: true,
       },
       '/users': {
-        target: 'http://44.244.222.102:8001',
+        target: 'http://localhost:8001',
         changeOrigin: true,
-        secure: false,
-      },
-      '/admin/coding': {
-        target: 'http://44.244.222.102:8001',
-        changeOrigin: true,
-        secure: false,
-      },
-      '/admin/roadmaps': {
-        target: 'http://44.244.222.102:8001',
-        changeOrigin: true,
-        secure: false,
       }
     }
   }

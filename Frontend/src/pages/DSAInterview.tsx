@@ -12,7 +12,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
-import { getLatestSubmission } from '../services/dsaService';
+import { getLatestSubmission, submitDSACode } from '../services/dsaService';
 import { formatDescription } from '../utils/formatDescription';
 import { endInterview } from '../services/interviewService';
 import { apiClient } from '../services/apiClient';
@@ -28,7 +28,7 @@ interface DSAInterviewProps {
   role?: string;
 }
 
-const IDESync = ({ code, consoleOutput, onNextQuestion, onRevealProblem }: { code: string, consoleOutput: any, onNextQuestion: () => void, onRevealProblem: () => void }) => {
+const IDESync = ({ code, consoleOutput, onNextQuestion, onRevealProblem }: { code: string, consoleOutput: any, onNextQuestion: (targetIdx?: number) => void, onRevealProblem: () => void }) => {
   const room = useRoomContext();
   const { localParticipant } = useLocalParticipant();
 
@@ -37,15 +37,15 @@ const IDESync = ({ code, consoleOutput, onNextQuestion, onRevealProblem }: { cod
     const timer = setTimeout(() => {
       const payload = JSON.stringify({ type: "code_update", code });
       localParticipant.publishData(new TextEncoder().encode(payload), { reliable: true });
-    }, 2000);
+    }, 1000);
     return () => clearTimeout(timer);
   }, [code, localParticipant]);
 
   useEffect(() => {
     if (!localParticipant || !consoleOutput) return;
-    const payload = JSON.stringify({ type: "code_execution", execution: consoleOutput });
+    const payload = JSON.stringify({ type: "code_execution", execution: consoleOutput, code });
     localParticipant.publishData(new TextEncoder().encode(payload), { reliable: true });
-  }, [consoleOutput, localParticipant]);
+  }, [consoleOutput, code, localParticipant]);
 
   useEffect(() => {
     if (!room) return;
@@ -53,7 +53,7 @@ const IDESync = ({ code, consoleOutput, onNextQuestion, onRevealProblem }: { cod
       try {
         const msg = JSON.parse(new TextDecoder().decode(payload));
         if (msg.type === "next_question") {
-          onNextQuestion();
+          onNextQuestion(typeof msg.question_index === 'number' ? msg.question_index : undefined);
         } else if (msg.type === "reveal_problem") {
           onRevealProblem();
         }
@@ -122,15 +122,10 @@ export const DSAInterview: React.FC<DSAInterviewProps> = ({ questionId, template
   const [language, setLanguage] = useState('python');
   const [submissionStatus, setSubmissionStatus] = useState<string | null>(null);
 
-  const [isProblemRevealed, setIsProblemRevealed] = useState(false);
+  const [isProblemRevealed, setIsProblemRevealed] = useState(true);
   useEffect(() => {
     async function loadCode() {
       if (question) {
-        if (!isProblemRevealed) {
-          setCode('# Waiting for the interviewer to start the problem...\n# Do not write code here yet.');
-          return;
-        }
-
         try {
           const submission = await getLatestSubmission(question.id, language);
           if (submission && submission.code) {
@@ -154,16 +149,16 @@ export const DSAInterview: React.FC<DSAInterviewProps> = ({ questionId, template
       }
     }
     loadCode();
-  }, [question, language, isProblemRevealed]);
+  }, [question, language]);
   const [activeTab, setActiveTab] = useState<'problem' | 'editorial'>('problem');
   const [testTab, setTestTab] = useState<'case1' | 'case2' | 'case3'>('case1');
   const [consoleOutput, setConsoleOutput] = useState<{ status: string, runtime?: string, memory?: string, raw?: any } | null>(null);
   const [isRunning, setIsRunning] = useState(false);
 
 
-  const handleNextQuestion = React.useCallback(() => {
+  const handleNextQuestion = React.useCallback((targetIdx?: number) => {
     setQuestionIndex((prev) => {
-      const nextIdx = prev + 1;
+      const nextIdx = typeof targetIdx === 'number' ? targetIdx : prev + 1;
       if (questions[nextIdx]) {
         setConsoleOutput(null);
         return nextIdx;
@@ -232,22 +227,21 @@ export const DSAInterview: React.FC<DSAInterviewProps> = ({ questionId, template
     setConsoleOutput(null);
     if (!question) return;
     try {
-      // Pointing to main_service DSA execution endpoint
-      const response = await apiClient.fetchWithAuth(`${API_URL}/api/v1/dsa/questions/${question.id}/submit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: roomName, code, language: language, question_id: question.id })
-      });
-      const data = await response.json();
+      const data = await submitDSACode(question.id, code, language, roomName);
       setConsoleOutput({
         status: data.status,
-        runtime: data.execution_time ? `${data.execution_time.toFixed(2)} ms` : 'N/A',
-        memory: '14.2 MB', // Mock memory
+        runtime: data.execution_time_ms ? `${data.execution_time_ms.toFixed(2)} ms` : 'N/A',
+        memory: '14.2 MB',
         raw: data
       });
-    } catch (err) {
-      console.error(err);
-      setConsoleOutput({ status: 'Error', runtime: 'N/A', memory: 'N/A' });
+    } catch (err: any) {
+      console.error("Code execution error:", err);
+      setConsoleOutput({
+        status: 'Error',
+        runtime: 'N/A',
+        memory: 'N/A',
+        raw: { error_message: err.message || 'Execution error' }
+      });
     } finally {
       setIsRunning(false);
     }
@@ -276,6 +270,18 @@ export const DSAInterview: React.FC<DSAInterviewProps> = ({ questionId, template
     }
   };
 
+  const testCasesList = React.useMemo(() => {
+    if (!question || !question.test_cases) return [];
+    try {
+      const parsed = typeof question.test_cases === 'string' ? JSON.parse(question.test_cases) : question.test_cases;
+      if (Array.isArray(parsed)) return parsed;
+      if (parsed && Array.isArray(parsed.cases)) return parsed.cases;
+      return [];
+    } catch {
+      return [];
+    }
+  }, [question]);
+
   if (isConnecting) {
     return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#080810', color: '#fff' }}>Connecting to interview room...</div>;
   }
@@ -299,9 +305,8 @@ export const DSAInterview: React.FC<DSAInterviewProps> = ({ questionId, template
     return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#080810', color: '#fff' }}>Loading interview...</div>;
   }
 
-  const parsedTestCases = question.test_cases ? (typeof question.test_cases === 'string' ? JSON.parse(question.test_cases) : question.test_cases) : [];
   const activeCaseIndex = testTab === 'case1' ? 0 : testTab === 'case2' ? 1 : 2;
-  const activeCase = parsedTestCases[activeCaseIndex];
+  const activeCase = testCasesList[activeCaseIndex];
 
   return (
     <div className="workspace-layout dsa-layout" style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: '#080810' }}>
@@ -506,15 +511,15 @@ export const DSAInterview: React.FC<DSAInterviewProps> = ({ questionId, template
                           <div style={{ marginBottom: '1rem' }}>
                             <div style={{ fontSize: '0.75rem', color: '#888', marginBottom: '0.5rem' }}>Input</div>
                             <div style={{ background: '#1A1A24', padding: '0.75rem', borderRadius: '6px', fontSize: '0.85rem', color: '#ccc', fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>
-                              {Array.isArray(activeCase.input)
-                                ? activeCase.input.map((v: any, i: number) => `Arg ${i + 1} = ${typeof v === 'string' ? v : JSON.stringify(v)}`).join('\n')
-                                : Object.entries(activeCase.input).map(([k, v]) => `${k} = ${typeof v === 'string' ? v : JSON.stringify(v)}`).join('\n')}
+                              {activeCase.args && typeof activeCase.args === 'object'
+                                ? Object.entries(activeCase.args).map(([k, v]) => `${k} = ${typeof v === 'string' ? `"${v}"` : JSON.stringify(v)}`).join('\n')
+                                : (activeCase.input ? (Array.isArray(activeCase.input) ? activeCase.input.join('\n') : JSON.stringify(activeCase.input)) : 'None')}
                             </div>
                           </div>
                           <div>
                             <div style={{ fontSize: '0.75rem', color: '#888', marginBottom: '0.5rem' }}>Expected</div>
                             <div style={{ background: '#1A1A24', padding: '0.75rem', borderRadius: '6px', fontSize: '0.85rem', color: '#ccc', fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>
-                              {typeof activeCase.expected === 'string' ? activeCase.expected : JSON.stringify(activeCase.expected)}
+                              {typeof activeCase.expected === 'string' ? `"${activeCase.expected}"` : JSON.stringify(activeCase.expected)}
                             </div>
                           </div>
                         </>

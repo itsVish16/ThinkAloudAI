@@ -1,6 +1,7 @@
-from datetime import datetime, date
-from pydantic import BaseModel, ConfigDict
+from datetime import date, datetime
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict
 
 
 class SkillResponse(BaseModel):
@@ -44,6 +45,17 @@ class DailyActivityResponse(BaseModel):
 
 
 class AchievementResponse(BaseModel):
+    """Global achievement definition without user-specific earned timestamp."""
+    id: int
+    title: str
+    description: str
+    icon_url: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserAchievementResponse(BaseModel):
+    """User-earned achievement with timestamp."""
     title: str
     description: str
     icon_url: str | None = None
@@ -80,14 +92,14 @@ class FullUserProfileResponse(BaseModel):
     preferred_language: str | None = None
     resume_url: str | None = None
 
+    achievements: list[UserAchievementResponse] = []
+
     model_config = ConfigDict(from_attributes=True)
+
 
 class PublicUserProfileResponse(BaseModel):
     username: str
     full_name: str
-    is_verified: bool
-    created_at: datetime
-
     bio: str | None = None
     avatar_url: str | None = None
     github_url: str | None = None
@@ -96,9 +108,11 @@ class PublicUserProfileResponse(BaseModel):
     location: str | None = None
     institution: str | None = None
     preferred_language: str | None = None
-    resume_url: str | None = None
+
+    achievements: list[UserAchievementResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
+
 
 class UpdateProfileDetailsRequest(BaseModel):
     bio: str | None = None
@@ -111,12 +125,14 @@ class UpdateProfileDetailsRequest(BaseModel):
     preferred_language: str | None = None
     resume_url: str | None = None
 
+
 class UserPreferenceResponse(BaseModel):
     theme: str
     email_notifications: bool
     push_notifications: bool
-    
+
     model_config = ConfigDict(from_attributes=True)
+
 
 class UpdateUserPreferenceRequest(BaseModel):
     theme: str | None = None

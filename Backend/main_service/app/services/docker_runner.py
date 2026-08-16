@@ -69,16 +69,18 @@ def run_code_in_docker(code: str, function_name: str, test_cases_json: str, lang
     filename = ""
 
     if language == "python":
+        test_cases_escaped = json.dumps(json.dumps(test_cases))
         runner_script = f"""
 import json
 import time
 import sys
 import traceback
+from typing import *
 
 # User code
 {code}
 
-test_cases = {json.dumps(test_cases)}
+test_cases = json.loads({test_cases_escaped})
 function_name = "{function_name}"
 
 solution_instance = None
@@ -280,11 +282,11 @@ print(json.dumps({{"results": results, "time_ms": execution_time_ms}}))
                 if res.get("error"):
                     if not first_error:
                         if "Time Limit" in res["error"]:
-                            first_error = f"Test {{i+1}} failed: {{res['error']}}"
+                            first_error = f"Test {i+1} failed: {res['error']}"
                         elif language == "python":
                             first_error = parse_traceback(res["error"])
                         else:
-                            first_error = f"Test {{i+1}} failed: {{res['error']}}"
+                            first_error = f"Test {i+1} failed: {res['error']}"
                     continue
                     
                 actual = res.get("output")
@@ -294,7 +296,7 @@ print(json.dumps({{"results": results, "time_ms": execution_time_ms}}))
                     passed += 1
                 else:
                     if not first_error:
-                        first_error = f"Test {{i+1}} failed.\\nInput: {{tc.get('args')}}\\nExpected: {{expected}}\\nGot: {{actual}}"
+                        first_error = f"Test {i+1} failed.\nInput: {tc.get('args')}\nExpected: {expected}\nGot: {actual}"
                         
             status = "Accepted" if passed == total_tests else "Wrong Answer"
             if passed < total_tests and first_error and ("Exit code" in first_error or "Traceback" in first_error):

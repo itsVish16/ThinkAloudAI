@@ -185,8 +185,8 @@ async def test_resend_verification_for_nonexistent_email(client):
 
 
 @pytest.mark.asyncio
-async def test_duplicate_signup_email(client):
-    payload, _ = await signup_user(client, username_prefix="dupuser")
+async def test_duplicate_signup_email(client, fake_redis):
+    payload, _ = await signup_user(client, username_prefix="dupuser", verified=True, fake_redis=fake_redis)
 
     response = await client.post(
         "/api/v1/users/signup",

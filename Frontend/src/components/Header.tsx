@@ -1,80 +1,204 @@
-import React, { useEffect, useState } from 'react';
-import { ArrowRight } from '@phosphor-icons/react';
+import React, { useState, useEffect } from 'react';
 import '../styles/Header.css';
 
 interface HeaderProps {
   currentPage: string;
-  onNavigate: (page: string) => void;
-  user: any | null;
-  onLogout?: () => void;
+  onNavigate: (page: string, params?: any) => void;
+  user: any;
+  onLogout: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, user }) => {
+export const Header: React.FC<HeaderProps> = ({
+  currentPage,
+  onNavigate,
+  user,
+  onLogout,
+}) => {
   const [isScrolled, setIsScrolled] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => {
-      if (window.scrollY > 20) {
-        setIsScrolled(true);
-      } else {
-        setIsScrolled(false);
-      }
+      setIsScrolled(window.scrollY > 20);
     };
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const handleLinkClick = (id: string) => {
-    onNavigate(id);
-  };
+  const adminEmails = ['vishal@example.com', 'vishal@thinkaloud.ai', 'vishalsaini160204@gmail.com'];
+  const isAdmin = user && user.email && adminEmails.includes(user.email.toLowerCase());
 
   return (
-    <header className={`app-header ${isScrolled ? 'scrolled' : ''} ${currentPage === 'landing' ? 'theme-light' : ''}`}>
-      <div className="container header-container">
-        {/* Logo */}
-        <div className="logo" onClick={() => handleLinkClick('landing')} style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-          <img src="/logo.png" alt="ThinkAloudAI Logo" style={{ height: '44px' }} />
+    <header className={`app-header ${isScrolled ? 'scrolled' : ''}`}>
+      <div className="header-container">
+        {/* Brand Logo */}
+        <div className="logo" onClick={() => onNavigate(user ? 'dashboard' : 'landing')}>
+          <div className="logo-icon-minimal">
+            <span className="logo-spark font-bold">⚡</span>
+          </div>
+          <span className="logo-text">
+            thinkaloud<span className="accent">.ai</span>
+          </span>
         </div>
+
+        {/* Navigation items */}
+        <nav className="desktop-nav">
+          <ul className="nav-list">
+            {user ? (
+              <>
+                <li>
+                  <button
+                    className={`nav-link ${currentPage === 'dashboard' ? 'active' : ''}`}
+                    onClick={() => onNavigate('dashboard')}
+                  >
+                    Dashboard
+                  </button>
+                </li>
+                <li>
+                  <button
+                    className={`nav-link ${currentPage === 'interview-types' ? 'active' : ''}`}
+                    onClick={() => onNavigate('interview-types')}
+                  >
+                    AI Interviews
+                  </button>
+                </li>
+                <li>
+                  <button
+                    className={`nav-link ${currentPage === 'practice' ? 'active' : ''}`}
+                    onClick={() => onNavigate('practice')}
+                  >
+                    DSA Practice
+                  </button>
+                </li>
+                <li>
+                  <button
+                    className={`nav-link ${currentPage === 'roadmaps' ? 'active' : ''}`}
+                    onClick={() => onNavigate('roadmaps')}
+                  >
+                    Roadmaps
+                  </button>
+                </li>
+                <li>
+                  <button
+                    className={`nav-link ${currentPage === 'code-arena' ? 'active' : ''}`}
+                    onClick={() => onNavigate('code-arena')}
+                  >
+                    Code Arena
+                  </button>
+                </li>
+                {isAdmin && (
+                  <li>
+                    <button
+                      className={`nav-link ${currentPage === 'admin' ? 'active' : ''}`}
+                      onClick={() => onNavigate('admin')}
+                      style={{ color: '#f59e0b' }}
+                    >
+                      Admin
+                    </button>
+                  </li>
+                )}
+              </>
+            ) : (
+              <>
+                <li>
+                  <button
+                    className={`nav-link ${currentPage === 'interview-types' ? 'active' : ''}`}
+                    onClick={() => onNavigate('interview-types')}
+                  >
+                    Interviews
+                  </button>
+                </li>
+                <li>
+                  <button
+                    className={`nav-link ${currentPage === 'practice' ? 'active' : ''}`}
+                    onClick={() => onNavigate('practice')}
+                  >
+                    DSA Practice
+                  </button>
+                </li>
+                <li>
+                  <button
+                    className={`nav-link ${currentPage === 'about' ? 'active' : ''}`}
+                    onClick={() => onNavigate('about')}
+                  >
+                    About
+                  </button>
+                </li>
+              </>
+            )}
+          </ul>
+        </nav>
 
         {/* Header Actions */}
         <div className="header-actions">
           {user ? (
-            <div className="user-profile-menu">
-              <div 
-                className="user-avatar-badge" 
-                onClick={() => handleLinkClick('dashboard')}
-                style={{ padding: '0', border: 'none', background: 'transparent' }}
-                title="Go to Dashboard"
+            <div className="relative">
+              <button
+                className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white text-sm font-medium transition-all"
+                onClick={() => setShowProfileMenu(!showProfileMenu)}
               >
-                <div className="avatar-circle" style={{ width: '36px', height: '36px', fontSize: '1rem', cursor: 'pointer' }}>
-                  {user.full_name ? user.full_name.charAt(0).toUpperCase() : 'U'}
+                <div className="w-6 h-6 rounded-full bg-orange-500/20 text-orange-400 flex items-center justify-center font-bold text-xs">
+                  {user.username ? user.username.charAt(0).toUpperCase() : 'U'}
                 </div>
-              </div>
+                <span>{user.username || 'User'}</span>
+              </button>
+
+              {showProfileMenu && (
+                <div
+                  className="absolute right-0 mt-2 w-48 bg-[#0e111a] border border-white/10 rounded-xl p-2 shadow-2xl flex flex-col gap-1 z-50 text-sm"
+                  onMouseLeave={() => setShowProfileMenu(false)}
+                >
+                  <button
+                    className="text-left px-3 py-2 text-white/80 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
+                    onClick={() => {
+                      setShowProfileMenu(false);
+                      onNavigate('profile');
+                    }}
+                  >
+                    Profile Settings
+                  </button>
+                  {isAdmin && (
+                    <button
+                      className="text-left px-3 py-2 text-amber-400 hover:bg-amber-500/10 rounded-lg transition-colors font-medium"
+                      onClick={() => {
+                        setShowProfileMenu(false);
+                        onNavigate('admin');
+                      }}
+                    >
+                      Admin Dashboard
+                    </button>
+                  )}
+                  <div className="h-px bg-white/10 my-1" />
+                  <button
+                    className="text-left px-3 py-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                    onClick={() => {
+                      setShowProfileMenu(false);
+                      onLogout();
+                    }}
+                  >
+                    Log Out
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <>
-              {/* Outline Log In button */}
-              <button 
-                className="btn btn-login-outline" 
-                onClick={() => handleLinkClick('login')}
+              <button
+                className="btn-login-outline"
+                onClick={() => onNavigate('login')}
               >
-                <span>Log In</span>
+                Log in
               </button>
-              
-              {/* Filled Pill CTA button */}
-              <button 
-                className="btn btn-cta-pill" 
-                onClick={() => handleLinkClick('signup')}
+              <button
+                className="btn-cta-pill"
+                onClick={() => onNavigate('signup')}
               >
-                <span>Register</span>
-                <ArrowRight size={14} style={{ marginLeft: '6px' }} />
+                Get Started
               </button>
             </>
           )}
-
         </div>
       </div>
     </header>
   );
 };
-export default Header;

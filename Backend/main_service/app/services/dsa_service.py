@@ -68,7 +68,8 @@ class DSAService:
         await db.refresh(new_question)
         
         try:
-            await redis.delete("dsa:questions:all")
+            async for key in redis.scan_iter("dsa:questions:all:*"):
+                await redis.delete(key)
         except Exception:
             pass
             
@@ -96,6 +97,10 @@ class DSAService:
             
         from app.services.mq_producer import publish_execution_task
         
+        func_name = question.function_name
+        test_cases_json = question.test_cases
+        test_harness = question.cpp_test_harness
+
         submission = CodeSubmission(
             session_id=request.session_id,
             question_id=question_id,
@@ -112,19 +117,19 @@ class DSAService:
             "submission_id": submission.id,
             "code": request.code,
             "language": request.language,
-            "function_name": question.function_name,
-            "test_cases_json": question.test_cases,
-            "test_harness": question.cpp_test_harness
+            "function_name": func_name,
+            "test_cases_json": test_cases_json,
+            "test_harness": test_harness
         }
         await publish_execution_task(task_data)
             
         return CodeSubmitResponse(
             status="Pending",
+            submission_id=submission.id,
             output=f"Execution queued with ID: {submission.id}",
             passed_tests=0,
             total_tests=0,
             execution_time_ms=0.0,
-            memory_used_kb=0.0
         )
 
     @staticmethod
@@ -136,6 +141,10 @@ class DSAService:
             
         from app.services.mq_producer import publish_execution_task
         
+        func_name = question.function_name
+        test_cases_json = question.test_cases
+        test_harness = question.cpp_test_harness
+
         submission = CodeSubmission(
             session_id=request.session_id,
             question_id=question_id,
@@ -152,27 +161,46 @@ class DSAService:
             "submission_id": submission.id,
             "code": request.code,
             "language": request.language,
-            "function_name": question.function_name,
-            "test_cases_json": question.test_cases,
-            "test_harness": question.cpp_test_harness
+            "function_name": func_name,
+            "test_cases_json": test_cases_json,
+            "test_harness": test_harness
         }
         await publish_execution_task(task_data)
         
         return CodeSubmitResponse(
             status="Pending",
+            submission_id=submission.id,
             output=f"Submission queued with ID: {submission.id}",
             passed_tests=0,
             total_tests=0,
             execution_time_ms=0.0,
-            memory_used_kb=0.0
         )
 
     @staticmethod
     def stream_submission_status(submission_id: int):
         import redis.asyncio as aioredis
         import time
+        from app.database import SessionLocal
         
         async def event_generator():
+            # Check if submission is already finished in DB
+            try:
+                async with SessionLocal() as db:
+                    result = await db.execute(select(CodeSubmission).filter(CodeSubmission.id == submission_id))
+                    sub = result.scalars().first()
+                    if sub and sub.status != "Pending":
+                        final_data = json.dumps({
+                            "status": sub.status,
+                            "error_message": sub.error_message,
+                            "execution_time_ms": sub.execution_time_ms,
+                            "passed_tests": sub.passed_tests,
+                            "total_tests": sub.total_tests
+                        })
+                        yield f"event: result\ndata: {final_data}\n\n"
+                        return
+            except Exception:
+                pass
+
             redis_client = aioredis.from_url(settings.REDIS_URL)
             pubsub = redis_client.pubsub()
             await pubsub.subscribe(f"submission_updates_{submission_id}")
@@ -180,9 +208,10 @@ class DSAService:
             try:
                 yield "event: connected\ndata: connected\n\n"
                 start_time = time.time()
+                last_poll = start_time
 
                 while True:
-                    if time.time() - start_time > 40:
+                    if time.time() - start_time > 45:
                         error_data = json.dumps({"status": "Error", "error_message": "Execution timed out waiting for worker."})
                         yield f"event: result\ndata: {error_data}\n\n"
                         break
@@ -192,6 +221,27 @@ class DSAService:
                         data = message["data"].decode("utf-8")
                         yield f"event: result\ndata: {data}\n\n"
                         break
+
+                    # Fallback DB check every 2 seconds
+                    if time.time() - last_poll >= 2.0:
+                        last_poll = time.time()
+                        try:
+                            async with SessionLocal() as db:
+                                result = await db.execute(select(CodeSubmission).filter(CodeSubmission.id == submission_id))
+                                sub = result.scalars().first()
+                                if sub and sub.status != "Pending":
+                                    final_data = json.dumps({
+                                        "status": sub.status,
+                                        "error_message": sub.error_message,
+                                        "execution_time_ms": sub.execution_time_ms,
+                                        "passed_tests": sub.passed_tests,
+                                        "total_tests": sub.total_tests
+                                    })
+                                    yield f"event: result\ndata: {final_data}\n\n"
+                                    break
+                        except Exception:
+                            pass
+
                     yield ":\n\n"
             except Exception as e:
                 error_data = json.dumps({"status": "Error", "error_message": f"Stream error: {str(e)}"})

@@ -1,14 +1,24 @@
+import os
 import uuid
-
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
 
 from app.db.database import Base, get_db
 from app.db.redis import get_redis
 from app.main import app
 
-test_engine = create_async_engine("postgresql+asyncpg://userservice:userservice@localhost:5432/userservice_test")
+TEST_DB_URL = os.getenv("TEST_DATABASE_URL", "sqlite+aiosqlite:///:memory:")
+if "sqlite" in TEST_DB_URL:
+    test_engine = create_async_engine(
+        TEST_DB_URL,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+else:
+    test_engine = create_async_engine(TEST_DB_URL)
+
 TestSession = async_sessionmaker(test_engine, expire_on_commit=False)
 
 
@@ -23,8 +33,9 @@ class FakeRedis:
     async def set(self, key, value, ex=None):
         self.store[key] = value
 
-    async def delete(self, key):
-        self.store.pop(key, None)
+    async def delete(self, *keys):
+        for k in keys:
+            self.store.pop(k, None)
 
     async def ping(self):
         return True
@@ -44,8 +55,6 @@ class FakeRedis:
         self.store[key] = value
 
     async def publish(self, channel, message):
-        if not hasattr(self, "published_messages"):
-            self.published_messages = []
         self.published_messages.append((channel, message))
         return 0
 

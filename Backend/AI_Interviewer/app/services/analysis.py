@@ -4,7 +4,7 @@ import asyncio
 import os
 import re
 from app.agent.prompts import POST_INTERVIEW_ANALYSIS_PROMPT
-from app.agent.llm import call_llm, _track
+from app.agent.llm import call_analysis_llm, _track
 from app.services.db import AsyncSessionLocal
 from app.models.interview import InterviewFeedback
 from app.services.events import publish_interview_completed
@@ -180,7 +180,7 @@ async def analyze_and_save_interview(session_id: str, user_id: str, candidate_na
     
     for attempt in range(MAX_RETRIES):
         try:
-            raw_response = await call_llm(eval_messages, system_prompt, opik_trace_id=opik_trace_id)
+            raw_response = await call_analysis_llm(eval_messages, system_prompt, opik_trace_id=opik_trace_id)
             
             # Resilient JSON extraction
             json_match = re.search(r'\{.*\}', raw_response.replace('\n', ' '), re.DOTALL)
@@ -218,20 +218,36 @@ async def analyze_and_save_interview(session_id: str, user_id: str, candidate_na
             "speaking_analytics": speaking_analytics
         }
         
-        # Save to DB
+        # Save to DB (idempotent — update if feedback already exists)
+        from sqlalchemy import select
         async with AsyncSessionLocal() as db:
-            feedback = InterviewFeedback(
-                session_id=session_id,
-                technical_score=data.get("technical_score", 0),
-                communication_score=data.get("communication_score", 0),
-                english_score=data.get("english_score", 0),
-                strengths=json.dumps(data.get("strengths", [])),
-                weaknesses=json.dumps(data.get("weaknesses", [])),
-                improvement_plan=json.dumps(data.get("improvement_plan", [])),
-                recommended_topics=data.get("recommended_topics", []),
-                detailed_metrics=detailed_metrics
-            )
-            db.add(feedback)
+            existing = (await db.execute(
+                select(InterviewFeedback).where(InterviewFeedback.session_id == session_id)
+            )).scalar_one_or_none()
+
+            if existing:
+                logger.info(f"Feedback already exists for {session_id}, updating.")
+                existing.technical_score = data.get("technical_score", 0)
+                existing.communication_score = data.get("communication_score", 0)
+                existing.english_score = data.get("english_score", 0)
+                existing.strengths = json.dumps(data.get("strengths", []))
+                existing.weaknesses = json.dumps(data.get("weaknesses", []))
+                existing.improvement_plan = json.dumps(data.get("improvement_plan", []))
+                existing.recommended_topics = data.get("recommended_topics", [])
+                existing.detailed_metrics = detailed_metrics
+            else:
+                feedback = InterviewFeedback(
+                    session_id=session_id,
+                    technical_score=data.get("technical_score", 0),
+                    communication_score=data.get("communication_score", 0),
+                    english_score=data.get("english_score", 0),
+                    strengths=json.dumps(data.get("strengths", [])),
+                    weaknesses=json.dumps(data.get("weaknesses", [])),
+                    improvement_plan=json.dumps(data.get("improvement_plan", [])),
+                    recommended_topics=data.get("recommended_topics", []),
+                    detailed_metrics=detailed_metrics
+                )
+                db.add(feedback)
             await db.commit()
             
         logger.info(f"Successfully saved feedback for session {session_id}")

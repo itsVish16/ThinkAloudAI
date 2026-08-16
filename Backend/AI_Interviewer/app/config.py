@@ -1,46 +1,118 @@
-import os
-import dotenv
+from typing import List, Optional
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-dotenv.load_dotenv(".env.local", override=True)
 
-class Config:
-    LIVEKIT_URL = os.getenv("LIVEKIT_URL")
-    LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY")
-    LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET")
-
-    # Sarvam AI Config
-    SARVAM_API_KEY = os.getenv("SARVAM_API_KEY")
-    SARVAM_LLM_MODEL = os.getenv("SARVAM_LLM_MODEL", "sarvam-105b")
-    SARVAM_TTS_MODEL = os.getenv("SARVAM_TTS_MODEL", "bulbul:v3")
-    SARVAM_TTS_SPEAKER = os.getenv("SARVAM_TTS_SPEAKER", "shubh")
-
-    # LLM Settings (OpenAI-compatible: Sarvam, Fireworks, Gemini, Groq, etc.)
-    LLM_API_KEY = os.getenv("LLM_API_KEY", SARVAM_API_KEY or "")
-    LLM_MODEL = os.getenv("LLM_MODEL", SARVAM_LLM_MODEL)
-    LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.sarvam.ai/v1")
-
-    # External User Service Config (defaults assume the unified docker stack)
-    USER_SERVICE_URL = os.getenv("USER_SERVICE_URL", "http://localhost:8000")
-    JWT_SECRET_KEY = os.environ["JWT_SECRET_KEY"]
-    JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-    
-    # Main Service Config (defaults assume the unified docker stack)
-    MAIN_SERVICE_URL = os.getenv("MAIN_SERVICE_URL", "http://localhost:8001")
-
-    # Dev mode: bypass auth when User Service is down
-    AUTH_BYPASS = os.getenv("AUTH_BYPASS", "false").lower() == "true"
-    CORS_ALLOWED_ORIGINS = os.getenv(
-        "CORS_ALLOWED_ORIGINS",
-        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000",
+class Config(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=(".env.local", ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
     )
 
+    LIVEKIT_URL: Optional[str] = "ws://localhost:7880"
+    LIVEKIT_API_KEY: Optional[str] = "devkey"
+    LIVEKIT_API_SECRET: Optional[str] = "secret"
+
+    # Sarvam AI Unified Config (TTS, STT, and LLM)
+    SARVAM_API_KEY: Optional[str] = None
+    SARVAM_BASE_URL: str = "https://api.sarvam.ai/v2"
+    SARVAM_MODEL: str = "gemma4"
+    SARVAM_TTS_MODEL: str = "bulbul:v3"
+    SARVAM_TTS_SPEAKER: str = "shubh"
+    SARVAM_TTS_LANGUAGE: str = "en-IN"
+    SARVAM_TTS_PACE: float = 1.0
+    SARVAM_TTS_SAMPLE_RATE: int = 22050
+    SARVAM_TTS_WS_URL: str = "wss://api.sarvam.ai/text-to-speech/ws"
+    SARVAM_STT_MODEL: str = "saaras:v3"
+    SARVAM_STT_LANGUAGE: str = "en-IN"
+    SARVAM_STT_URL: Optional[str] = None
+
+    # Dual-LLM Architecture Settings
+    DUAL_LLM_ENABLED: bool = True
+
+    # Fast Responder LLM (Ultra-Low Latency, e.g. Sarvam gemma4 / Fireworks Llama-3.2-3B/8B / Groq)
+    FAST_LLM_API_KEY: str = ""
+    FAST_LLM_MODEL: str = "gemma4"
+    FAST_LLM_BASE_URL: str = "https://api.sarvam.ai/v2"
+    FAST_LLM_MAX_TOKENS: int = 35
+
+    # Main Deep Reasoning LLM (Full context reasoning, e.g. Fireworks DeepSeek-V3 / Nemotron)
+    MAIN_LLM_API_KEY: str = ""
+    MAIN_LLM_MODEL: str = "accounts/fireworks/models/deepseek-v3"
+    MAIN_LLM_BASE_URL: str = "https://api.fireworks.ai/inference/v1"
+
+    # Separate model for background post-interview analysis (latency not critical)
+    ANALYSIS_LLM_API_KEY: str = ""
+    ANALYSIS_LLM_MODEL: str = ""
+    ANALYSIS_LLM_BASE_URL: str = ""
+
+    # Legacy fallback LLM Settings (OpenAI-compatible)
+    LLM_API_KEY: str = ""
+    LLM_MODEL: str = "sarvam-105b"
+    LLM_BASE_URL: str = "https://api.sarvam.ai/v1"
+
+    # External User Service Config
+    USER_SERVICE_URL: str = "http://localhost:8000"
+    USER_SERVICE_JWT_SECRET: Optional[str] = None
+    JWT_SECRET_KEY: str = "dev-secret-key-change-me"
+    JWT_ALGORITHM: str = "HS256"
+
+    # Main Service Config
+    MAIN_SERVICE_URL: str = "http://localhost:8001"
+
+    # Dev mode: bypass auth when User Service is down
+    AUTH_BYPASS: bool = False
+    CORS_ALLOWED_ORIGINS: str = (
+        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,https://thinkaloudai.tech,https://www.thinkaloudai.tech"
+    )
+
+    # Database & Events
+    DATABASE_URL: str = "postgresql+asyncpg://thinkaloud:thinkaloud_dev@localhost:5432/interviewer_service"
+    REDIS_URL: str = "redis://localhost:6379/2"
+    RABBITMQ_URL: str = "amqp://guest:guest@localhost:5672/"
+
+    # Admin & Observability
+    ADMIN_EMAILS: str = "vishal@example.com,vishal@thinkaloud.ai,vishalsaini160204@gmail.com"
+    OPIK_API_KEY: Optional[str] = None
+    OPIK_WORKSPACE: str = "default"
+    OPIK_PROJECT_NAME: str = "ThinkAloud.ai"
+
     @property
-    def cors_allowed_origins_list(self) -> list[str]:
+    def jwt_secret(self) -> str:
+        return self.USER_SERVICE_JWT_SECRET or self.JWT_SECRET_KEY
+
+    @property
+    def fast_llm_key(self) -> str:
+        return self.FAST_LLM_API_KEY or self.SARVAM_API_KEY or self.LLM_API_KEY or "dummy_key"
+
+    @property
+    def fast_llm_url(self) -> str:
+        return self.FAST_LLM_BASE_URL or self.SARVAM_BASE_URL or self.LLM_BASE_URL
+
+    @property
+    def main_llm_key(self) -> str:
+        return self.MAIN_LLM_API_KEY or self.SARVAM_API_KEY or self.LLM_API_KEY or "dummy_key"
+
+    @property
+    def main_llm_url(self) -> str:
+        return self.MAIN_LLM_BASE_URL or self.SARVAM_BASE_URL or self.LLM_BASE_URL
+
+    @property
+    def analysis_llm_key(self) -> str:
+        return self.ANALYSIS_LLM_API_KEY or self.main_llm_key
+
+    @property
+    def analysis_llm_url(self) -> str:
+        return self.ANALYSIS_LLM_BASE_URL or self.main_llm_url
+
+    @property
+    def analysis_llm_model(self) -> str:
+        return self.ANALYSIS_LLM_MODEL or self.MAIN_LLM_MODEL
+
+    @property
+    def cors_allowed_origins_list(self) -> List[str]:
         origins = [origin.strip() for origin in self.CORS_ALLOWED_ORIGINS.split(",") if origin.strip()]
         return origins or ["http://localhost:5173"]
 
-    # Database & Events
-    DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://thinkaloud:thinkaloud_dev@localhost:5432/interviewer_service")
-    REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/2")
 
 settings = Config()

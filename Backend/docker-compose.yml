@@ -47,7 +47,7 @@ services:
     image: gcr.io/datadoghq/agent:7
     container_name: thinkaloud-datadog-agent
     environment:
-      DD_API_KEY: ${DD_API_KEY:?DD_API_KEY is required}
+      DD_API_KEY: ${DD_API_KEY:-dev_dummy_key}
       DD_SITE: ${DD_SITE:-datadoghq.com}
       DD_ENV: ${DD_ENV:-production}
       DD_APM_ENABLED: 'true'
