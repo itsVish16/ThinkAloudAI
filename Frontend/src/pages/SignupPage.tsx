@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { EnvelopeSimple, LockKey, Eye, EyeClosed, ShieldWarning, ArrowRight, User, GoogleLogo, GithubLogo, LinkedinLogo, CheckCircle, Sparkle } from '@phosphor-icons/react';
+import { EnvelopeSimple, LockKey, Eye, EyeClosed, ShieldWarning, ArrowRight, User, GoogleLogo, GithubLogo, LinkedinLogo, CheckCircle } from '@phosphor-icons/react';
 import { authService } from '../services/authService';
 import { AuthLayout } from '../components/AuthLayout';
 
@@ -109,13 +109,8 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigate, onSignupSucc
           </div>
         )}
 
-        {/* Eyebrow & Card Header */}
+        {/* Card Header */}
         <div className="auth-card-header">
-          <div className="auth-eyebrow">
-            <Sparkle size={13} weight="fill" style={{ color: 'var(--auth-orange)' }} />
-            <span>{step === 'signup' ? 'Get Started Free' : 'Step 2 of 2'}</span>
-          </div>
-
           <h2>{step === 'signup' ? 'Create your account ✨' : 'Verify your email ✉️'}</h2>
           <p>
             {step === 'signup' 
