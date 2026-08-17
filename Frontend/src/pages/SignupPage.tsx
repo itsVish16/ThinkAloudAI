@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { EnvelopeSimple, LockKey, Eye, EyeClosed, ShieldWarning, ArrowRight, User, GoogleLogo, GithubLogo, LinkedinLogo, CheckCircle } from '@phosphor-icons/react';
+import { EnvelopeSimple, LockKey, Eye, EyeClosed, ShieldWarning, ArrowRight, User, GoogleLogo, GithubLogo, LinkedinLogo, CheckCircle, Sparkle } from '@phosphor-icons/react';
 import { authService } from '../services/authService';
 import { AuthLayout } from '../components/AuthLayout';
 
@@ -41,7 +41,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigate, onSignupSucc
         full_name: fullName 
       });
       
-      setSuccessMessage('Account created! Please check your email for the verification code.');
+      setSuccessMessage('Account created! Please check your email for the 6-digit verification code.');
       setStep('verify');
     } catch (err: any) {
       if (err.message?.toLowerCase().includes('already registered')) {
@@ -101,53 +101,82 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigate, onSignupSucc
   return (
     <AuthLayout onNavigate={onNavigate}>
       <div className="auth-card">
-        {/* Tabs - Only show on signup step */}
+        {/* Segmented Tabs - Only show on signup step */}
         {step === 'signup' && (
-          <div className="auth-tabs">
-            <button className="auth-tab" onClick={() => onNavigate('login')}>Log in</button>
-            <button className="auth-tab active">Sign up</button>
+          <div className="auth-tabs-segmented">
+            <button className="auth-tab-segment" onClick={() => onNavigate('login')}>Log in</button>
+            <button className="auth-tab-segment active">Sign up</button>
           </div>
         )}
 
+        {/* Eyebrow & Card Header */}
         <div className="auth-card-header">
-          <h2>{step === 'signup' ? 'Create an account ✨' : 'Verify your email ✉️'}</h2>
-          <p>{step === 'signup' 
-            ? 'Join ThinkAloudAI to prepare for your next big interview.' 
-            : `We sent a 6-digit code to ${email}`}</p>
+          <div className="auth-eyebrow">
+            <Sparkle size={13} weight="fill" style={{ color: 'var(--auth-orange)' }} />
+            <span>{step === 'signup' ? 'Get Started Free' : 'Step 2 of 2'}</span>
+          </div>
+
+          <h2>{step === 'signup' ? 'Create your account ✨' : 'Verify your email ✉️'}</h2>
+          <p>
+            {step === 'signup' 
+              ? 'Join ThinkAloudAI to prepare for top-tier technical interviews.' 
+              : `We sent a 6-digit verification code to ${email}`}
+          </p>
         </div>
 
+        {/* Error / Success Notifications */}
         {errorMessage && (
-          <div className="auth-error-banner">
-            <ShieldWarning size={18} weight="fill" />
+          <div className="auth-banner-error">
+            <ShieldWarning size={20} weight="fill" style={{ flexShrink: 0, marginTop: '1px' }} />
             <span>{errorMessage}</span>
           </div>
         )}
 
         {successMessage && (
-          <div className="auth-error-banner" style={{ backgroundColor: 'rgba(52, 211, 153, 0.1)', color: '#34d399', borderLeftColor: '#34d399' }}>
-            <CheckCircle size={18} weight="fill" />
+          <div className="auth-banner-success">
+            <CheckCircle size={20} weight="fill" style={{ flexShrink: 0, marginTop: '1px' }} />
             <span>{successMessage}</span>
           </div>
         )}
 
         {step === 'signup' && (
           <>
+            {/* Social Logins */}
             <div className="auth-social-row">
-              <button className="auth-social-btn" onClick={() => alert('Social Sign Up coming soon!')} title="Continue with Google">
-                <GoogleLogo weight="bold" className="social-icon" style={{color: '#EA4335'}} />
+              <button 
+                type="button" 
+                className="auth-social-btn" 
+                onClick={() => alert('Google authentication is configured in production.')} 
+                title="Sign up with Google"
+              >
+                <GoogleLogo weight="bold" className="social-icon" style={{ color: '#EA4335' }} />
+                <span>Google</span>
               </button>
-              <button className="auth-social-btn" onClick={() => alert('Social Sign Up coming soon!')} title="Continue with GitHub">
+              <button 
+                type="button" 
+                className="auth-social-btn" 
+                onClick={() => alert('GitHub authentication is configured in production.')} 
+                title="Sign up with GitHub"
+              >
                 <GithubLogo weight="fill" className="social-icon" />
+                <span>GitHub</span>
               </button>
-              <button className="auth-social-btn" onClick={() => alert('Social Sign Up coming soon!')} title="Continue with LinkedIn">
-                <LinkedinLogo weight="fill" className="social-icon" style={{color: '#0A66C2'}} />
+              <button 
+                type="button" 
+                className="auth-social-btn" 
+                onClick={() => alert('LinkedIn authentication is configured in production.')} 
+                title="Sign up with LinkedIn"
+              >
+                <LinkedinLogo weight="fill" className="social-icon" style={{ color: '#0A66C2' }} />
+                <span>LinkedIn</span>
               </button>
             </div>
 
-            <div className="auth-divider">or</div>
+            <div className="auth-divider">or register with email</div>
 
             <form onSubmit={handleSignupSubmit} className="auth-form">
-              <div style={{ display: 'flex', gap: '1rem' }}>
+              {/* First Name & Last Name in 2 columns */}
+              <div style={{ display: 'flex', gap: '12px' }}>
                 <div className="auth-input-group" style={{ flex: 1 }}>
                   <label className="auth-label">First name</label>
                   <div className="input-wrapper">
@@ -156,7 +185,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigate, onSignupSucc
                       type="text"
                       value={firstName}
                       onChange={(e) => setFirstName(e.target.value)}
-                      placeholder="John"
+                      placeholder="Jane"
                       className="auth-input-field"
                       required
                       disabled={isLoading}
@@ -179,6 +208,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigate, onSignupSucc
                 </div>
               </div>
 
+              {/* Email */}
               <div className="auth-input-group">
                 <label className="auth-label">Email address</label>
                 <div className="input-wrapper">
@@ -187,7 +217,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigate, onSignupSucc
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@example.com"
+                    placeholder="name@domain.com"
                     className="auth-input-field"
                     required
                     disabled={isLoading}
@@ -195,6 +225,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigate, onSignupSucc
                 </div>
               </div>
 
+              {/* Password */}
               <div className="auth-input-group">
                 <label className="auth-label">Password</label>
                 <div className="input-wrapper">
@@ -203,7 +234,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigate, onSignupSucc
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Create a password"
+                    placeholder="At least 8 characters (1 uppercase, 1 digit)"
                     className="auth-input-field"
                     required
                     disabled={isLoading}
@@ -212,27 +243,32 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigate, onSignupSucc
                     type="button" 
                     className="toggle-password-btn"
                     onClick={() => setShowPassword(!showPassword)}
+                    tabIndex={-1}
                   >
                     {showPassword ? <Eye size={18} /> : <EyeClosed size={18} />}
                   </button>
                 </div>
               </div>
 
+              {/* Submit CTA */}
               <button 
                 type="submit" 
                 className="auth-submit-btn"
                 disabled={isLoading || !email || !password || !firstName}
               >
                 {isLoading ? (
-                  <div className="spinner-mini"></div>
+                  <div className="spinner-mini" />
                 ) : (
-                  <>Sign up <ArrowRight size={18} weight="bold" /></>
+                  <>
+                    <span>Create Account</span>
+                    <ArrowRight size={18} weight="bold" />
+                  </>
                 )}
               </button>
             </form>
 
-            <div className="auth-redirect" style={{ marginTop: '1rem', flexDirection: 'column', gap: '0.5rem' }}>
-              <div>Already have an account? <span onClick={() => onNavigate('login')} className="auth-link">Log in</span></div>
+            <div className="auth-redirect">
+              <span>Already have an account? <strong onClick={() => onNavigate('login')} className="auth-link">Log in</strong></span>
             </div>
           </>
         )}
@@ -241,18 +277,18 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigate, onSignupSucc
           <>
             <form onSubmit={handleVerifySubmit} className="auth-form">
               <div className="auth-input-group">
-                <label className="auth-label">Verification Code (6 Digits)</label>
+                <label className="auth-label">6-Digit Verification Code</label>
                 <div className="input-wrapper">
-                  <LockKey weight="duotone" className="input-icon" size={20} />
                   <input
                     type="text"
                     value={otp}
-                    onChange={(e) => setOtp(e.target.value)}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
                     placeholder="123456"
-                    className="auth-input-field"
+                    className="auth-input-field auth-otp-input"
                     maxLength={6}
                     required
                     disabled={isLoading}
+                    autoFocus
                   />
                 </div>
               </div>
@@ -263,16 +299,21 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigate, onSignupSucc
                 disabled={isLoading || otp.length !== 6}
               >
                 {isLoading ? (
-                  <div className="spinner-mini"></div>
+                  <div className="spinner-mini" />
                 ) : (
-                  <>Verify & Login <ArrowRight size={18} weight="bold" /></>
+                  <>
+                    <span>Verify & Enter Dashboard</span>
+                    <ArrowRight size={18} weight="bold" />
+                  </>
                 )}
               </button>
             </form>
 
-            <div className="auth-redirect" style={{ marginTop: '1rem', flexDirection: 'column', gap: '0.5rem' }}>
-              <div>Didn't receive a code? <span onClick={handleResendOtp} className="auth-link">Resend it</span></div>
-              <div><span onClick={() => setStep('signup')} className="auth-link">Back to Sign up</span></div>
+            <div className="auth-redirect">
+              <span>Didn't receive a code? <strong onClick={handleResendOtp} className="auth-link">Resend it</strong></span>
+              <span onClick={() => { setStep('signup'); setErrorMessage(null); setSuccessMessage(null); }} className="auth-link">
+                &larr; Change email or details
+              </span>
             </div>
           </>
         )}
@@ -280,4 +321,5 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigate, onSignupSucc
     </AuthLayout>
   );
 };
+
 export default SignupPage;
