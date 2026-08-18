@@ -225,6 +225,7 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/1}
       RABBITMQ_URL: ${RABBITMQ_URL:-amqp://${RABBITMQ_DEFAULT_USER:-thinkaloud}:${RABBITMQ_DEFAULT_PASS:-thinkaloud_rabbit_secret}@rabbitmq:5672/}
       USER_SERVICE_URL: http://user-service:8000
+      UVICORN_WORKERS: "2"
     depends_on:
       postgres:
         condition: service_healthy
@@ -272,6 +273,7 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/2}
       RABBITMQ_URL: ${RABBITMQ_URL:-amqp://${RABBITMQ_DEFAULT_USER:-thinkaloud}:${RABBITMQ_DEFAULT_PASS:-thinkaloud_rabbit_secret}@rabbitmq:5672/}
       USER_SERVICE_URL: http://user-service:8000
+      UVICORN_WORKERS: "2"
       MAIN_SERVICE_URL: http://main-service:8001
     depends_on:
       postgres:
@@ -322,6 +324,7 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/2}
       RABBITMQ_URL: ${RABBITMQ_URL:-amqp://${RABBITMQ_DEFAULT_USER:-thinkaloud}:${RABBITMQ_DEFAULT_PASS:-thinkaloud_rabbit_secret}@rabbitmq:5672/}
       USER_SERVICE_URL: http://user-service:8000
+      UVICORN_WORKERS: "2"
       MAIN_SERVICE_URL: http://main-service:8001
     depends_on:
       postgres:
