@@ -228,7 +228,7 @@ export const SystemDesignInterview: React.FC<SystemDesignInterviewProps> = ({ te
       console.error("Failed to end interview:", err);
     } finally {
       setIsEnding(false);
-      onNavigate('dashboard');
+      onNavigate('analysis', { sessionId: roomName });
     }
   };
 

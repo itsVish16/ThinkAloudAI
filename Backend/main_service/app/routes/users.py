@@ -22,28 +22,16 @@ async def get_user_profile(
     Submissions are stored by email, so we look up the user's email via the
     user_profile_replica table and match by either ID or email.
     """
-    user_uuid = payload.get("sub")
-    if not user_uuid:
-        raise HTTPException(status_code=400, detail="Invalid token payload: 'sub' missing")
+    user_uuid = str(payload.get("sub") or "")
+    email = str(payload.get("email") or "")
+    username = str(payload.get("username") or "")
 
-    # Extract user email from the JWT payload directly
-    email = payload.get("email")
+    identifiers = list({i for i in [user_uuid, email, email.lower(), username, username.lower()] if i})
 
-    # Build OR filter: match by UUID or email (DSAPractice stores email as session_id)
-    # Also ensure we only fetch actual submissions, not runs
-    if email:
-        filter_clause = and_(
-            CodeSubmission.is_submission == True,
-            or_(
-                CodeSubmission.session_id == str(user_uuid),
-                CodeSubmission.session_id == email
-            )
-        )
-    else:
-        filter_clause = and_(
-            CodeSubmission.is_submission == True,
-            CodeSubmission.session_id == str(user_uuid)
-        )
+    filter_clause = and_(
+        CodeSubmission.is_submission == True,
+        CodeSubmission.session_id.in_(identifiers)
+    )
 
     # Eager-load the related question to avoid N+1 queries
     query = (
@@ -55,18 +43,19 @@ async def get_user_profile(
     result = await db.execute(query)
     all_submissions = result.scalars().all()
 
-    # Only count Accepted submissions for profile stats
+    # Only count Accepted submissions for solved problem counts
     submissions = [s for s in all_submissions if s.status == "Accepted"]
-    total_submissions = len(submissions)
+    total_submissions = len(all_submissions)
 
     solved = set()
-    accepted_count = 0
+    accepted_count = len(submissions)
     heatmap_dict = {}
 
-    for s in submissions:
-        solved.add(s.question_id)
+    for s in all_submissions:
+        if s.status == "Accepted":
+            solved.add(s.question_id)
 
-        # Add to heatmap
+        # Add all actual submissions to heatmap
         if s.created_at:
             date_str = s.created_at.strftime("%Y-%m-%d")
             heatmap_dict[date_str] = heatmap_dict.get(date_str, 0) + 1
@@ -75,16 +64,15 @@ async def get_user_profile(
 
     accuracy_percentage = 0.0
     total_all = len(all_submissions)
-    accepted_count = len(submissions)
     if total_all > 0:
         accuracy_percentage = (accepted_count / total_all) * 100
 
     recent = []
-    for s in all_submissions[:5]:
+    for s in all_submissions[:50]:
         recent.append(SubmissionSummary(
             id=s.id,
             question_id=s.question_id,
-            question_title=s.question.title if s.question else "Unknown",
+            question_title=s.question.title if s.question else f"Question #{s.question_id}",
             language=s.language,
             status=s.status,
             created_at=s.created_at

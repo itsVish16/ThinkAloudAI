@@ -12,7 +12,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
-import { getLatestSubmission, submitDSACode } from '../services/dsaService';
+import { getLatestSubmission, submitDSACode, runDSACode } from '../services/dsaService';
 import { formatDescription } from '../utils/formatDescription';
 import { endInterview } from '../services/interviewService';
 import { apiClient } from '../services/apiClient';
@@ -23,7 +23,7 @@ interface DSAInterviewProps {
   templateId?: string;
   templateName?: string;
   accessToken?: string | null;
-  onNavigate: (page: string) => void;
+  onNavigate: (page: string, params?: any) => void;
   domain?: string;
   role?: string;
 }
@@ -154,6 +154,7 @@ export const DSAInterview: React.FC<DSAInterviewProps> = ({ questionId, template
   const [testTab, setTestTab] = useState<'case1' | 'case2' | 'case3'>('case1');
   const [consoleOutput, setConsoleOutput] = useState<{ status: string, runtime?: string, memory?: string, raw?: any } | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
 
   const handleNextQuestion = React.useCallback((targetIdx?: number) => {
@@ -227,7 +228,7 @@ export const DSAInterview: React.FC<DSAInterviewProps> = ({ questionId, template
     setConsoleOutput(null);
     if (!question) return;
     try {
-      const data = await submitDSACode(question.id, code, language, roomName);
+      const data = await runDSACode(question.id, code, language, roomName);
       setConsoleOutput({
         status: data.status,
         runtime: data.execution_time_ms ? `${data.execution_time_ms.toFixed(2)} ms` : 'N/A',
@@ -235,7 +236,7 @@ export const DSAInterview: React.FC<DSAInterviewProps> = ({ questionId, template
         raw: data
       });
     } catch (err: any) {
-      console.error("Code execution error:", err);
+      console.error("Code run error:", err);
       setConsoleOutput({
         status: 'Error',
         runtime: 'N/A',
@@ -244,6 +245,32 @@ export const DSAInterview: React.FC<DSAInterviewProps> = ({ questionId, template
       });
     } finally {
       setIsRunning(false);
+    }
+  };
+
+  const handleSubmitCode = async () => {
+    setIsSubmitting(true);
+    setConsoleOutput(null);
+    if (!question) return;
+    try {
+      const data = await submitDSACode(question.id, code, language, roomName);
+      setSubmissionStatus(data.status);
+      setConsoleOutput({
+        status: data.status,
+        runtime: data.execution_time_ms ? `${data.execution_time_ms.toFixed(2)} ms` : 'N/A',
+        memory: '14.2 MB',
+        raw: data
+      });
+    } catch (err: any) {
+      console.error("Code submission error:", err);
+      setConsoleOutput({
+        status: 'Error',
+        runtime: 'N/A',
+        memory: 'N/A',
+        raw: { error_message: err.message || 'Submission error' }
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -266,7 +293,7 @@ export const DSAInterview: React.FC<DSAInterviewProps> = ({ questionId, template
       console.error("Failed to end interview:", err);
     } finally {
       setIsEnding(false);
-      onNavigate('dashboard');
+      onNavigate('analysis', { sessionId: roomName });
     }
   };
 
@@ -355,8 +382,12 @@ export const DSAInterview: React.FC<DSAInterviewProps> = ({ questionId, template
                       <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#00D084' }}></div> You
                     </div>
                     <div style={{ position: 'absolute', bottom: 8, left: 0, width: '100%', display: 'flex', justifyContent: 'center', gap: '0.5rem', zIndex: 10 }}>
-                      <button style={{ background: 'rgba(0,0,0,0.6)', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer' }} onClick={() => setIsMuted(!isMuted)}><Mic size={14} /></button>
-                      <button style={{ background: 'rgba(0,0,0,0.6)', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer' }} onClick={() => setIsCameraActive(!isCameraActive)}><Video size={14} /></button>
+                      <button style={{ background: 'rgba(0,0,0,0.6)', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer' }} onClick={() => setIsMuted(!isMuted)}>
+                        {isMuted ? <MicOff size={14} /> : <Mic size={14} />}
+                      </button>
+                      <button style={{ background: 'rgba(0,0,0,0.6)', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer' }} onClick={() => setIsCameraActive(!isCameraActive)}>
+                        {isCameraActive ? <Video size={14} /> : <VideoOff size={14} />}
+                      </button>
                     </div>
                     <CameraFeed isActive={isCameraActive} isMuted={isMuted} />
                   </div>
@@ -443,8 +474,7 @@ export const DSAInterview: React.FC<DSAInterviewProps> = ({ questionId, template
                       }}
                       style={{ background: 'transparent', color: '#fff', border: 'none', fontSize: '0.85rem', outline: 'none' }}
                     >
-                      <option value="python">Python3</option>
-                      <option value="javascript">JavaScript</option>
+                      <option value="python">Python</option>
                       <option value="cpp">C++</option>
                     </select>
                     <span style={{ color: '#888', fontSize: '0.85rem' }}>Auto</span>
@@ -461,7 +491,7 @@ export const DSAInterview: React.FC<DSAInterviewProps> = ({ questionId, template
                     theme="vs-dark"
                     value={code}
                     onChange={(v) => setCode(v || '')}
-                    options={{ minimap: { enabled: false }, fontSize: 13, scrollBeyondLastLine: false, padding: { top: 16 } }}
+                    options={{ minimap: { enabled: false }, fontSize: 13, scrollBeyondLastLine: false, padding: { top: 16 }, automaticLayout: true }}
                   />
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', borderTop: '1px solid #222', background: '#0A0A12' }}>
@@ -469,12 +499,14 @@ export const DSAInterview: React.FC<DSAInterviewProps> = ({ questionId, template
                     <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#00D084' }}></div> Saved &nbsp;&nbsp;&nbsp; Ln 1, Col 1
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '0.85rem' }} onClick={handleRunCode} disabled={isRunning}>
+                    <button className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '0.85rem' }} onClick={handleRunCode} disabled={isRunning || isSubmitting}>
                       {isRunning ? 'Running...' : <><Play size={14} /> Run</>}
                     </button>
                     <button className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '0.85rem' }}>Testcase</button>
                     <button className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '0.85rem' }}><Brain size={14} /> Ask AI</button>
-                    <button className="btn btn-primary" style={{ padding: '6px 16px', fontSize: '0.85rem', background: '#FF6B00', color: '#fff', border: 'none', borderRadius: '4px' }} onClick={handleRunCode} disabled={isRunning}><Send size={14} /> Submit</button>
+                    <button className="btn btn-primary" style={{ padding: '6px 16px', fontSize: '0.85rem', background: '#FF6B00', color: '#fff', border: 'none', borderRadius: '4px' }} onClick={handleSubmitCode} disabled={isRunning || isSubmitting}>
+                      <Send size={14} /> {isSubmitting ? 'Submitting...' : 'Submit'}
+                    </button>
                   </div>
                 </div>
               </div>

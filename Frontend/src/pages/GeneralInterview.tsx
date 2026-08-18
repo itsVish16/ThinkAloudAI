@@ -13,7 +13,7 @@ interface GeneralInterviewProps {
   templateId?: string;
   templateName?: string;
   accessToken?: string | null;
-  onNavigate: (page: string) => void;
+  onNavigate: (page: string, params?: any) => void;
 }
 
 // Module-scope component so it isn't recreated (and remounted) on every render.
@@ -71,7 +71,7 @@ export const GeneralInterview: React.FC<GeneralInterviewProps> = ({ templateId, 
       console.error("Failed to end interview:", err);
     } finally {
       setIsEnding(false);
-      onNavigate('dashboard');
+      onNavigate('analysis', { sessionId: roomName });
     }
   };
 

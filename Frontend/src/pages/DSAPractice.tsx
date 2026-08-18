@@ -56,7 +56,7 @@ export const DSAPractice: React.FC<DSAPracticeProps> = ({ questionId, user, onNa
 
   const [activeTab, setActiveTab] = useState<'problem' | 'submissions'>('problem');
   const [language, setLanguage] = useState<string>('python');
-  const [code, setCode] = useState<string>('');
+  const [codeByLanguage, setCodeByLanguage] = useState<Record<string, string>>({});
   
   // Terminal / Run Code State
   const [isRunning, setIsRunning] = useState(false);
@@ -69,36 +69,49 @@ export const DSAPractice: React.FC<DSAPracticeProps> = ({ questionId, user, onNa
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalSubmission, setModalSubmission] = useState<any>(null);
 
-  // Initialize code when question or language changes
+  // Initialize draft code per language when question changes without overwriting active edits
   useEffect(() => {
-    async function loadCodeForLanguage() {
-      if (!question) return;
+    let isCancelled = false;
+    async function loadInitialCode() {
+      if (!question?.id) return;
+      const defaults: Record<string, string> = {
+        python: question.starterCode?.python || question.python_starter_code || '# Write your Python code here\n',
+        cpp: question.starterCode?.cpp || question.cpp_starter_code || '// Write your C++ code here\n',
+      };
+
       try {
-        const latest = await getLatestSubmission(question.id, language);
-        if (latest && latest.code) {
-          setCode(latest.code);
-          setSelectedSubmissionId(null); 
-        } else if (question.starterCode) {
-          setCode(question.starterCode[language as keyof typeof question.starterCode] || '');
-          setSelectedSubmissionId(null);
+        const [pySub, cppSub] = await Promise.allSettled([
+          getLatestSubmission(question.id, 'python'),
+          getLatestSubmission(question.id, 'cpp')
+        ]);
+        if (pySub.status === 'fulfilled' && pySub.value?.code) {
+          defaults.python = pySub.value.code;
+        }
+        if (cppSub.status === 'fulfilled' && cppSub.value?.code) {
+          defaults.cpp = cppSub.value.code;
         }
       } catch (e) {
-         console.error("Failed to fetch latest submission", e);
-         if (question.starterCode) {
-           setCode(question.starterCode[language as keyof typeof question.starterCode] || '');
-         }
-         setSelectedSubmissionId(null);
+        console.error("Failed to fetch latest submissions", e);
+      }
+
+      if (!isCancelled) {
+        setCodeByLanguage((prev) => ({
+          ...defaults,
+          ...prev,
+        }));
+        setSelectedSubmissionId(null);
       }
     }
-    loadCodeForLanguage();
-  }, [question, language]);
+    loadInitialCode();
+    return () => { isCancelled = true; };
+  }, [question?.id]);
 
   // Load submissions history list when question changes
   useEffect(() => {
     async function loadHistory() {
       if (question) {
         try {
-          const sessionId = (user?.id ? String(user.id) : null) || 'guest_session';
+          const sessionId = user?.email || (user?.id ? String(user.id) : null) || 'guest_session';
           const subs = await getQuestionSubmissions(question.id, sessionId);
           setSubmissionsList(subs);
         } catch (error) {
@@ -108,6 +121,20 @@ export const DSAPractice: React.FC<DSAPracticeProps> = ({ questionId, user, onNa
     }
     loadHistory();
   }, [question, user]);
+
+  const currentCode = codeByLanguage[language] ?? (
+    language === 'cpp'
+      ? (question?.starterCode?.cpp || question?.cpp_starter_code || '// Write your C++ code here\n')
+      : (question?.starterCode?.python || question?.python_starter_code || '# Write your Python code here\n')
+  );
+
+  const handleCodeChange = (value: string | undefined) => {
+    const newCode = value || '';
+    setCodeByLanguage((prev) => ({
+      ...prev,
+      [language]: newCode,
+    }));
+  };
 
   // Handle language change
   const handleLanguageChange = (lang: string) => {
@@ -120,8 +147,8 @@ export const DSAPractice: React.FC<DSAPracticeProps> = ({ questionId, user, onNa
     setConsoleOutput({ logs: ['➔ Compiling and running solution...'], raw: null });
 
     try {
-      const sessionId = (user?.id ? String(user.id) : null) || 'guest_session';
-      const response = await runDSACode(question.id, code, language, sessionId);
+      const sessionId = user?.email || (user?.id ? String(user.id) : null) || 'guest_session';
+      const response = await runDSACode(question.id, currentCode, language, sessionId);
       
       setConsoleOutput({
         logs: [
@@ -146,8 +173,8 @@ export const DSAPractice: React.FC<DSAPracticeProps> = ({ questionId, user, onNa
     setConsoleOutput({ logs: ['➔ Submitting solution for evaluation...'], raw: null });
 
     try {
-      const sessionId = (user?.id ? String(user.id) : null) || 'guest_session';
-      const response = await submitDSACode(question.id, code, language, sessionId);
+      const sessionId = user?.email || (user?.id ? String(user.id) : null) || 'guest_session';
+      const response = await submitDSACode(question.id, currentCode, language, sessionId);
       
       setConsoleOutput({
         logs: [
@@ -257,7 +284,7 @@ export const DSAPractice: React.FC<DSAPracticeProps> = ({ questionId, user, onNa
                             </div>
                           </div>
                           <div style={{ color: '#aaa', fontSize: '0.85rem' }}>
-                            {sub.tests_passed} / {sub.total_tests} passed
+                            {(sub.passed_tests ?? sub.tests_passed ?? 0)} / {(sub.total_tests ?? 0)} passed
                           </div>
                         </div>
                       ))}
@@ -317,8 +344,8 @@ export const DSAPractice: React.FC<DSAPracticeProps> = ({ questionId, user, onNa
                     height="100%"
                     language={language}
                     theme="vs-dark"
-                    value={code}
-                    onChange={(value) => setCode(value || '')}
+                    value={currentCode}
+                    onChange={handleCodeChange}
                     options={{
                       minimap: { enabled: false },
                       fontSize: 14,
@@ -329,6 +356,7 @@ export const DSAPractice: React.FC<DSAPracticeProps> = ({ questionId, user, onNa
                       cursorBlinking: "smooth",
                       cursorSmoothCaretAnimation: "on",
                       formatOnPaste: true,
+                      automaticLayout: true,
                     }}
                   />
                 </div>
@@ -397,7 +425,7 @@ export const DSAPractice: React.FC<DSAPracticeProps> = ({ questionId, user, onNa
                     language={modalSubmission.language}
                     theme="vs-dark"
                     value={modalSubmission.code}
-                    options={{ readOnly: true, minimap: { enabled: false } }}
+                    options={{ readOnly: true, minimap: { enabled: false }, automaticLayout: true }}
                   />
                 </div>
               </div>
@@ -407,7 +435,7 @@ export const DSAPractice: React.FC<DSAPracticeProps> = ({ questionId, user, onNa
                     {modalSubmission.status}
                   </div>
                   <div style={{ color: '#aaa', fontSize: '0.9rem' }}>
-                    Tests Passed: {modalSubmission.tests_passed} / {modalSubmission.total_tests}
+                    Tests Passed: {modalSubmission.passed_tests ?? modalSubmission.tests_passed ?? 0} / {modalSubmission.total_tests ?? 0}
                   </div>
                   {modalSubmission.execution_time_ms && (
                     <div style={{ color: '#888', fontSize: '0.85rem', marginTop: '0.5rem' }}>
@@ -426,7 +454,10 @@ export const DSAPractice: React.FC<DSAPracticeProps> = ({ questionId, user, onNa
                     className="btn btn-primary" 
                     style={{ width: '100%' }}
                     onClick={() => {
-                      setCode(modalSubmission.code);
+                      setCodeByLanguage((prev) => ({
+                        ...prev,
+                        [modalSubmission.language]: modalSubmission.code,
+                      }));
                       setLanguage(modalSubmission.language);
                       setIsModalOpen(false);
                     }}

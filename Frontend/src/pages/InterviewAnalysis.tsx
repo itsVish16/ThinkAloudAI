@@ -53,6 +53,12 @@ export function InterviewAnalysis({ sessionId, onNavigate }: InterviewAnalysisPr
     }
   }, [sessionId]);
 
+  const overallScore = Math.round(
+    ((analysisData?.evaluation?.technical_score || 0) +
+     (analysisData?.evaluation?.communication_score || 0) +
+     (analysisData?.evaluation?.english_score || 0)) / 3
+  ) || 0;
+
   const handleForceComplete = async () => {
     setIsGenerating(true);
     try {
@@ -60,14 +66,24 @@ export function InterviewAnalysis({ sessionId, onNavigate }: InterviewAnalysisPr
       if (token) {
         await endInterview(token, sessionId);
         const eventSource = new EventSource(`${API_BASE_URL}/api/interview/${sessionId}/stream?token=${token}`);
-        eventSource.onmessage = (event) => {
-          const data = JSON.parse(event.data);
-          if (data.event === "InterviewCompleted") {
+        
+        const handleCompletion = (event: MessageEvent) => {
+          try {
+            const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+            if (data.event === "InterviewCompleted" || event.type === "InterviewCompleted") {
+              fetchAnalysis();
+              setIsGenerating(false);
+              eventSource.close();
+            }
+          } catch {
             fetchAnalysis();
             setIsGenerating(false);
             eventSource.close();
           }
         };
+
+        eventSource.addEventListener('InterviewCompleted', handleCompletion);
+        eventSource.onmessage = handleCompletion;
 
         eventSource.onerror = (err) => {
           console.error("SSE error", err);
@@ -87,18 +103,18 @@ export function InterviewAnalysis({ sessionId, onNavigate }: InterviewAnalysisPr
 
   useEffect(() => {
     if (!loading && analysisData) {
-      const { evaluation } = analysisData;
-      const score = evaluation?.technical_score || 0;
+      const score = overallScore;
       if (ringRef.current) {
         const circumference = 377;
+        const clampedScore = Math.max(0, Math.min(100, score));
         setTimeout(() => {
           if (ringRef.current) {
-            ringRef.current.style.strokeDashoffset = (circumference - (circumference * score / 100)).toString();
+            ringRef.current.style.strokeDashoffset = (circumference - (circumference * clampedScore / 100)).toString();
           }
         }, 300);
       }
     }
-  }, [loading, analysisData]);
+  }, [loading, analysisData, overallScore]);
 
   if (loading) {
     return (
@@ -138,7 +154,6 @@ export function InterviewAnalysis({ sessionId, onNavigate }: InterviewAnalysisPr
     durationStr = `${diffMins}m`;
   }
 
-  const overallScore = Math.round(((evaluation?.technical_score || 0) + (evaluation?.communication_score || 0) + (evaluation?.english_score || 0)) / 3) || 0;
   const verdict = detailed.hiring_decision || "Pending";
   const commScore = evaluation?.communication_score || 0;
 
@@ -231,39 +246,62 @@ export function InterviewAnalysis({ sessionId, onNavigate }: InterviewAnalysisPr
         <div className="ta-rise" style={{ animationDelay: '.2s' }}>
           <div className="ta-sec-head"><h2>Performance breakdown</h2><span>5 categories</span></div>
           <div className="ta-meters">
-            {interview_type === 'system_design' ? (
-              <>
-                {renderMeter('Requirements gathering', detailed.technical_breakdown?.requirements_gathering || 0, 400)}
-                {renderMeter('High-level architecture', detailed.technical_breakdown?.high_level_architecture || 0, 490)}
-                {renderMeter('Scalability & capacity', detailed.technical_breakdown?.scalability_and_capacity || 0, 580)}
-                {renderMeter('Trade-off reasoning', detailed.technical_breakdown?.trade_off_reasoning || 0, 670)}
-                {renderMeter('Communication', detailed.technical_breakdown?.communication || 0, 760)}
-              </>
-            ) : interview_type === 'behavioral' ? (
-              <>
-                {renderMeter('STAR structure', detailed.technical_breakdown?.star_structure || 0, 400)}
-                {renderMeter('Specificity', detailed.technical_breakdown?.specificity || 0, 490)}
-                {renderMeter('Ownership & impact', detailed.technical_breakdown?.ownership_and_impact || 0, 580)}
-                {renderMeter('Clarity', detailed.technical_breakdown?.clarity || 0, 670)}
-                {renderMeter('Conciseness', detailed.technical_breakdown?.conciseness || 0, 760)}
-              </>
-            ) : interview_type === 'ai_ml' || interview_type === 'ml-engineer-infra' || interview_type === 'agentic-ai-engineer' ? (
-              <>
-                {renderMeter('ML Fundamentals', detailed.technical_breakdown?.ml_fundamentals || 0, 400)}
-                {renderMeter('Model Selection', detailed.technical_breakdown?.model_selection || 0, 490)}
-                {renderMeter('Data Processing', detailed.technical_breakdown?.data_processing || 0, 580)}
-                {renderMeter('System Architecture', detailed.technical_breakdown?.system_architecture || 0, 670)}
-                {renderMeter('Communication', detailed.technical_breakdown?.communication || 0, 760)}
-              </>
-            ) : (
-              <>
-                {renderMeter('Problem solving / Approach', detailed.technical_breakdown?.algorithms || 0, 400)}
-                {renderMeter('Code correctness', detailed.technical_breakdown?.edge_cases || 0, 490)}
-                {renderMeter('Time complexity', detailed.technical_breakdown?.time_complexity || 0, 580)}
-                {renderMeter('Communication', detailed.communication_breakdown?.clarity || 0, 670)}
-                {renderMeter('Code quality', detailed.technical_breakdown?.code_quality || 0, 760)}
-              </>
-            )}
+            {(() => {
+              const iType = (interview_type || '').toLowerCase();
+              if (iType.includes('system_design') || iType.includes('sd')) {
+                return (
+                  <>
+                    {renderMeter('Requirements gathering', detailed.technical_breakdown?.requirements_gathering || 0, 400)}
+                    {renderMeter('High-level architecture', detailed.technical_breakdown?.high_level_architecture || 0, 490)}
+                    {renderMeter('Scalability & capacity', detailed.technical_breakdown?.scalability_and_capacity || 0, 580)}
+                    {renderMeter('Trade-off reasoning', detailed.technical_breakdown?.trade_off_reasoning || 0, 670)}
+                    {renderMeter('Communication', detailed.technical_breakdown?.communication || 0, 760)}
+                  </>
+                );
+              }
+              if (iType.includes('behavioral') || iType.includes('hr')) {
+                return (
+                  <>
+                    {renderMeter('STAR structure', detailed.technical_breakdown?.star_structure || 0, 400)}
+                    {renderMeter('Specificity', detailed.technical_breakdown?.specificity || 0, 490)}
+                    {renderMeter('Ownership & impact', detailed.technical_breakdown?.ownership_and_impact || 0, 580)}
+                    {renderMeter('Clarity', detailed.technical_breakdown?.clarity || 0, 670)}
+                    {renderMeter('Conciseness', detailed.technical_breakdown?.conciseness || 0, 760)}
+                  </>
+                );
+              }
+              if (iType.includes('pm') || iType.includes('product')) {
+                return (
+                  <>
+                    {renderMeter('User Empathy & Scoping', detailed.technical_breakdown?.user_empathy_and_scoping || 0, 400)}
+                    {renderMeter('Product Sense & Vision', detailed.technical_breakdown?.product_sense_and_vision || 0, 490)}
+                    {renderMeter('Prioritization Framework', detailed.technical_breakdown?.prioritization_framework || 0, 580)}
+                    {renderMeter('Metrics & Trade-offs', detailed.technical_breakdown?.metrics_and_tradeoffs || 0, 670)}
+                    {renderMeter('Structured Communication', detailed.technical_breakdown?.communication || 0, 760)}
+                  </>
+                );
+              }
+              if (iType.includes('ai') || iType.includes('ml')) {
+                return (
+                  <>
+                    {renderMeter('ML Fundamentals', detailed.technical_breakdown?.ml_fundamentals || 0, 400)}
+                    {renderMeter('Model Selection', detailed.technical_breakdown?.model_selection || 0, 490)}
+                    {renderMeter('Data Processing', detailed.technical_breakdown?.data_processing || 0, 580)}
+                    {renderMeter('System Architecture', detailed.technical_breakdown?.system_architecture || 0, 670)}
+                    {renderMeter('Communication', detailed.technical_breakdown?.communication || 0, 760)}
+                  </>
+                );
+              }
+              return (
+                <>
+                  {renderMeter('Problem solving / Approach', detailed.technical_breakdown?.algorithms || 0, 400)}
+                  {renderMeter('Code correctness', detailed.technical_breakdown?.edge_cases || 0, 490)}
+                  {renderMeter('Time complexity', detailed.technical_breakdown?.time_complexity || 0, 580)}
+                  {renderMeter('Communication', detailed.communication_breakdown?.clarity || 0, 670)}
+                  {renderMeter('Code quality', detailed.technical_breakdown?.code_quality || 0, 760)}
+                </>
+              );
+            })()}
           </div>
         </div>
 

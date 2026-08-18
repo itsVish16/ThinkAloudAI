@@ -33,7 +33,7 @@ async def publish_interview_completed(
 ) -> Dict[str, Any]:
     """
     Publishes the InterviewCompleted event to the RabbitMQ Event Bus and Redis.
-    Uses 'thinkaloud_events' topic exchange with routing key 'interview.completed'.
+    Injects Datadog distributed trace headers for cross-service APM visibility.
     """
     event_payload = {
         "event": "InterviewCompleted",
@@ -43,16 +43,41 @@ async def publish_interview_completed(
             "score": overall_score,
             "type": interview_type,
             "domain": domain,
+            "technical_score": technical_score,
+            "communication_score": communication_score,
+            "english_score": english_score,
             "feedback": feedback_text or "",
             "detailed_metrics": detailed_metrics or {},
         },
     }
+
+    # Tag active span with domain metadata if Datadog is present
+    try:
+        from ddtrace import tracer
+        root_span = tracer.current_root_span()
+        if root_span:
+            root_span.set_tag("usr.id", user_id)
+            root_span.set_tag("interview.session_id", session_id)
+            root_span.set_tag("interview.type", interview_type)
+            root_span.set_tag("interview.score", overall_score)
+    except Exception:
+        pass
 
     # Publish to Redis for real-time SSE frontend updates
     try:
         await redis_client.publish("interview_events", json.dumps(event_payload))
     except Exception as redis_err:
         logger.error(f"Failed to publish to Redis: {redis_err}")
+
+    # Inject Datadog trace context into RabbitMQ headers
+    headers: Dict[str, Any] = {}
+    try:
+        from ddtrace import tracer
+        current_span = tracer.current_span()
+        if current_span:
+            tracer.inject(current_span.context, headers)
+    except Exception:
+        pass
 
     # Publish to RabbitMQ topic exchange 'thinkaloud_events' with routing key 'interview.completed'
     try:
@@ -67,14 +92,17 @@ async def publish_interview_completed(
             message = aio_pika.Message(
                 body=json.dumps(event_payload).encode(),
                 delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+                headers=headers,
             )
             await exchange.publish(message, routing_key="interview.completed")
     except Exception as rmq_err:
         logger.error(f"Failed to publish to RabbitMQ: {rmq_err}")
 
-    # Update Leaderboard in Redis
+    # Update Leaderboard in Redis (Track highest score per candidate)
     try:
-        await redis_client.zincrby("global_leaderboard", overall_score, candidate_name)
+        current_lb_score = await redis_client.zscore("global_leaderboard", candidate_name)
+        if current_lb_score is None or overall_score > float(current_lb_score):
+            await redis_client.zadd("global_leaderboard", {candidate_name: overall_score})
     except Exception as lb_err:
         logger.error(f"Failed to update leaderboard: {lb_err}")
 

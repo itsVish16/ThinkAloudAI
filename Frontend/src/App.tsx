@@ -19,11 +19,10 @@ import { CodeArenaPage } from './pages/CodeArenaPage';
 import { RoadmapsPage } from './pages/RoadmapsPage';
 import { AboutPage } from './pages/AboutPage';
 import { ProfilePage } from './pages/ProfilePage';
-import { TempDashboard } from './pages/TempDashboard';
 import { InterviewAnalysis } from './pages/InterviewAnalysis';
 import { AdminDashboard } from './pages/AdminDashboard';
 
-type Page = 'landing' | 'about' | 'interview-types' | 'code-arena' | 'roadmaps' | 'dashboard' | 'practice' | 'dsa-interview' | 'general-interview' | 'system-design-interview' | 'discussion' | 'chat' | 'login' | 'signup' | 'pre-join' | 'profile' | 'temp-dashboard' | 'analysis' | 'admin';
+type Page = 'landing' | 'about' | 'interview-types' | 'code-arena' | 'roadmaps' | 'dashboard' | 'practice' | 'dsa-interview' | 'general-interview' | 'system-design-interview' | 'discussion' | 'chat' | 'login' | 'signup' | 'pre-join' | 'profile' | 'analysis' | 'admin';
 
 interface NavParams {
   questionId?: string;
@@ -57,7 +56,6 @@ const PAGE_TO_PATH: Record<Page, string> = {
 
   'pre-join': '/pre-join',
   'profile': '/profile',
-  'temp-dashboard': '/temp-dashboard',
   'analysis': '/analysis',
   'admin': '/admin',
 };
@@ -264,6 +262,8 @@ function App() {
         return <GeneralInterview templateId={navParams.templateId} templateName={navParams.templateName} accessToken={accessToken} onNavigate={handleNavigate} />;
       case 'system-design-interview':
         return <SystemDesignInterview templateId={navParams.templateId} templateName={navParams.templateName} accessToken={accessToken} onNavigate={handleNavigate} domain={navParams.domain} role={navParams.role} />;
+      case 'discussion':
+        return <GeneralInterview templateId={navParams.templateId || 'discussion'} templateName={navParams.templateName || 'Discussion & Case Study'} accessToken={accessToken} onNavigate={handleNavigate} />;
       case 'analysis':
         return <InterviewAnalysis sessionId={navParams.sessionId || ''} onNavigate={handleNavigate} />;
       case 'admin':
@@ -279,8 +279,6 @@ function App() {
 
       case 'profile':
         return <ProfilePage onNavigate={handleNavigate} username={navParams.username} />;
-      case 'temp-dashboard':
-        return <TempDashboard user={user} onNavigate={handleNavigate} />;
       default:
         return <LandingPage onNavigate={handleNavigate} />;
     }
@@ -298,7 +296,6 @@ function App() {
                      currentPage !== 'signup' &&
                      currentPage !== 'dashboard' &&
                      currentPage !== 'profile' &&
-                     currentPage !== 'temp-dashboard' &&
                      currentPage !== 'analysis' &&
                      currentPage !== 'admin' &&
                      currentPage !== 'pre-join';

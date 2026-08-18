@@ -80,7 +80,7 @@ class ChatService:
                 )
                 db_messages = list(msg_result.scalars().all())
                 
-                # Merge with Redis buffer
+                # Merge with Redis buffer for this session
                 raw_buffer = await redis_client.lrange(f"chat:buffer:{session_id}", 0, -1)
                 for raw in raw_buffer:
                     try:
@@ -90,6 +90,20 @@ class ChatService:
                             role=msg_data["role"],
                             content=msg_data["content"]
                         ))
+                    except Exception:
+                        pass
+                
+                # Also check legacy global buffer if any exists
+                legacy_buffer = await redis_client.lrange("chat:buffer", 0, -1)
+                for raw in legacy_buffer:
+                    try:
+                        msg_data = json.loads(raw)
+                        if msg_data.get("session_id") == session_id:
+                            db_messages.append(ChatMessageModel(
+                                session_id=session_id,
+                                role=msg_data["role"],
+                                content=msg_data["content"]
+                            ))
                     except Exception:
                         pass
                 
@@ -105,7 +119,7 @@ class ChatService:
                             history.append((msg.role, parsed_content))
                         else:
                             history.append((msg.role, msg.content))
-                    except json.JSONDecodeError:
+                    except (json.JSONDecodeError, TypeError):
                         history.append((msg.role, msg.content))
 
                 # 3. Construct user content
@@ -118,8 +132,8 @@ class ChatService:
                     user_content = user_query
                     db_content = user_query
 
-                # 4. Save new user message to Redis buffer
-                await redis_client.rpush("chat:buffer", json.dumps({
+                # 4. Save new user message to per-session Redis buffer
+                await redis_client.rpush(f"chat:buffer:{session_id}", json.dumps({
                     "session_id": session_id,
                     "role": "user",
                     "content": db_content
@@ -284,7 +298,7 @@ class ChatService:
                                         )
                                         latest_roadmap = result.scalars().first()
                                         if latest_roadmap:
-                                            await redis_client.rpush("chat:buffer", json.dumps({
+                                            await redis_client.rpush(f"chat:buffer:{session_id}", json.dumps({
                                                 "session_id": session_id,
                                                 "role": "roadmap",
                                                 "content": str(latest_roadmap.id)
@@ -314,7 +328,7 @@ class ChatService:
                 yield f"data: {json.dumps({'type': 'execution_end', 'time': time.time()})}\n\n"
 
                 if assistant_response:
-                    await redis_client.rpush("chat:buffer", json.dumps({
+                    await redis_client.rpush(f"chat:buffer:{session_id}", json.dumps({
                         "session_id": session_id,
                         "role": "assistant",
                         "content": assistant_response
@@ -349,22 +363,38 @@ class ChatService:
         )
         db_msgs = list(msg_result.scalars().all())
         
-        # Merge with Redis buffer
+        # Merge with per-session Redis buffer
         dummy_id = 999999
-        raw_buffer = await redis_client.lrange("chat:buffer", 0, -1)
+        raw_buffer = await redis_client.lrange(f"chat:buffer:{session_id}", 0, -1)
         for raw in raw_buffer:
+            try:
+                msg_data = json.loads(raw)
+                db_msgs.append(ChatMessageModel(
+                    id=dummy_id,
+                    session_id=session_id,
+                    role=msg_data["role"],
+                    content=msg_data["content"],
+                    created_at=datetime.now(UTC)
+                ))
+                dummy_id += 1
+            except Exception:
+                pass
+
+        # Also check legacy global buffer if any exists
+        legacy_buffer = await redis_client.lrange("chat:buffer", 0, -1)
+        for raw in legacy_buffer:
             try:
                 msg_data = json.loads(raw)
                 if msg_data.get("session_id") == session_id:
                     db_msgs.append(ChatMessageModel(
-                        id=dummy_id, # Dummy ID for frontend sorting
+                        id=dummy_id,
                         session_id=session_id,
                         role=msg_data["role"],
                         content=msg_data["content"],
                         created_at=datetime.now(UTC)
                     ))
                     dummy_id += 1
-            except json.JSONDecodeError:
+            except Exception:
                 pass
         return db_msgs
 

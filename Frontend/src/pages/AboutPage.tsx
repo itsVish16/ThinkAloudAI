@@ -20,6 +20,7 @@ interface AboutPageProps {
 }
 
 export const AboutPage: React.FC<AboutPageProps> = ({ onNavigate }) => {
+  const isAuthenticated = !!localStorage.getItem('access_token');
   const values = [
     {
       icon: <Target size={26} weight="duotone" />,
@@ -86,7 +87,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onNavigate }) => {
             a real interviewer would.
           </p>
           <div className="about-hero-actions">
-            <button className="ta-btn-primary ta-btn" onClick={() => onNavigate('signup')}>
+            <button className="ta-btn-primary ta-btn" onClick={() => onNavigate(isAuthenticated ? 'dashboard' : 'signup')}>
               Try it free <ArrowRight size={16} />
             </button>
             <button className="ta-btn" onClick={() => onNavigate('landing')}>
@@ -196,7 +197,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onNavigate }) => {
             </div>
           </div>
           <div className="about-cta-actions">
-            <button className="ta-btn-primary ta-btn" onClick={() => onNavigate('signup')}>
+            <button className="ta-btn-primary ta-btn" onClick={() => onNavigate(isAuthenticated ? 'dashboard' : 'signup')}>
               Get started <ArrowRight size={16} />
             </button>
             <button className="ta-btn" onClick={() => onNavigate('interview-types')}>

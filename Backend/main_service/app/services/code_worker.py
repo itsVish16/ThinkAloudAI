@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import sys
 from aio_pika import connect_robust, IncomingMessage
 from app.config import settings
 from app.database import SessionLocal, redis_client
@@ -11,16 +12,12 @@ from sqlalchemy.future import select
 logger = logging.getLogger(__name__)
 
 async def process_code_execution(data: dict):
-    """
-    Executes the code using docker_runner and updates DB and Redis Pub/Sub.
-    """
     submission_id = data.get("submission_id")
     if not submission_id:
         logger.error("Code execution event missing submission_id")
         return
 
     try:
-        # Run code synchronously in a thread pool so we don't block the asyncio event loop
         docker_result = await asyncio.to_thread(
             run_code_in_docker,
             code=data["code"],
@@ -42,12 +39,10 @@ async def process_code_execution(data: dict):
                 submission.total_tests = docker_result.get("total_tests")
                 await db.commit()
 
-        # Publish the result to Redis for SSE listeners
         await redis_client.publish(f"submission_updates_{submission_id}", json.dumps(docker_result))
         
     except Exception as e:
         logger.error(f"Execution failed for submission {submission_id}: {e}")
-        # Try to publish error state
         try:
             await redis_client.publish(f"submission_updates_{submission_id}", json.dumps({
                 "status": "Error",
@@ -66,29 +61,42 @@ async def process_code_execution(data: dict):
 
 
 async def handle_code_message(message: IncomingMessage, semaphore: asyncio.Semaphore):
-    """
-    Processes a single code execution message with explicit acknowledgment and retry handling.
-    ACK happens strictly after task completion.
-    """
-    async with semaphore:
-        try:
-            body = message.body.decode()
-            data = json.loads(body)
-            await process_code_execution(data)
-            await message.ack()
-        except json.JSONDecodeError as e:
-            logger.error(f"Malformed JSON in code execution queue message: {e}")
-            await message.reject(requeue=False)
-        except Exception as e:
-            logger.error(f"Error executing code task: {e}")
-            await message.reject(requeue=True)
+    span_ctx = None
+    try:
+        from ddtrace import tracer
+        if message.headers:
+            span_ctx = tracer.extract(message.headers)
+    except Exception:
+        pass
+
+    try:
+        from ddtrace import tracer
+        span_cm = tracer.trace("rabbitmq.consume.code_execution", child_of=span_ctx, service="main-service")
+    except Exception:
+        span_cm = None
+
+    async def _execute():
+        async with semaphore:
+            try:
+                body = message.body.decode()
+                data = json.loads(body)
+                await process_code_execution(data)
+                await message.ack()
+            except json.JSONDecodeError as e:
+                logger.error(f"Malformed JSON in code execution queue message: {e}")
+                await message.reject(requeue=False)
+            except Exception as e:
+                logger.error(f"Error executing code task: {e}")
+                await message.reject(requeue=True)
+
+    if span_cm:
+        with span_cm as span:
+            await _execute()
+    else:
+        await _execute()
 
 
 async def start_code_worker():
-    """
-    Listens to code_execution_queue and processes code runs with concurrency control
-    and reliable acknowledgment after task completion.
-    """
     rabbitmq_url = settings.RABBITMQ_URL if hasattr(settings, 'RABBITMQ_URL') else "amqp://guest:guest@localhost:5672/"
     semaphore = asyncio.Semaphore(5)
     
@@ -96,9 +104,7 @@ async def start_code_worker():
         try:
             connection = await connect_robust(rabbitmq_url)
             channel = await connection.channel()
-            # Prefetch count determines how many concurrent unacked jobs this worker takes
             await channel.set_qos(prefetch_count=5)
-            
             queue = await channel.declare_queue("code_execution_queue", durable=True)
             logger.info("Main Service Code Worker started successfully.")
             

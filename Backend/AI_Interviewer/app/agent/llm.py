@@ -194,7 +194,7 @@ async def call_analysis_llm(
         response = await analysis_client.chat.completions.create(
             model=settings.analysis_llm_model,
             messages=formatted_messages,
-            temperature=0.3,
+            temperature=0.0,
             max_tokens=4096,
             stream=False,
         )
@@ -391,12 +391,12 @@ async def evaluate_llm(
         return result
     except Exception as e:
         logger.error(f"Failed to parse EvaluationResult: {e}")
-        # Robust fallback
+        # Robust fail-safe fallback: retain stage rather than forcing stage advancement
         fallback = EvaluationResult(
-            reasoning="Fallback evaluation due to parsing error.",
+            reasoning="Fallback evaluation due to parsing or network glitch.",
             score=3,
-            feedback="Progressing stage.",
-            objective_met=True,
+            feedback="Retaining stage for safe turn progression.",
+            objective_met=False,
             trigger_next_question=False
         )
         if metrics:

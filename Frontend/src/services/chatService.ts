@@ -1,4 +1,13 @@
 import { apiClient } from './apiClient';
+import { 
+  startChatStream as startChatStreamCore, 
+  type StreamEvent, 
+  type StreamHandlers, 
+  type StreamOptions 
+} from '../state/chatStream';
+
+export type { StreamEvent, StreamHandlers, StreamOptions };
+
 export interface APIMessage {
   id: number;
   session_id: string;
@@ -41,82 +50,69 @@ export async function deleteSession(sessionId: string): Promise<void> {
 }
 
 export async function startChatStream(
+  opts: StreamOptions,
+  handlers: StreamHandlers
+): Promise<void>;
+export async function startChatStream(
   sessionId: string,
   message: string,
   onChunk: (token: string) => void,
-  onToolStart: (toolName: string, input: any) => void,
-  onToolEnd: (toolName: string, output: string) => void,
-  onError: (msg: string) => void,
-  images?: string[]
-) {
-  try {
-    const response = await apiClient.fetchWithAuth(`${API_URL}/chat/stream`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        session_id: sessionId,
-        message: message,
-        ...(images && images.length > 0 && { images })
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    if (!response.body) {
-      throw new Error("No readable stream available.");
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder("utf-8");
-    let buffer = "";
-
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-
-      // Decode the buffer chunk
-      buffer += decoder.decode(value, { stream: true });
-
-      // Process lines split by single newlines (handling \r\n as well)
-      const lines = buffer.split(/\r?\n/);
-      
-      // Save the last incomplete line back to the buffer
-      buffer = lines.pop() || "";
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (trimmed.startsWith("data: ")) {
-          const rawData = trimmed.slice(6).trim();
-          if (!rawData) continue;
-
-          try {
-            const event = JSON.parse(rawData);
-
-            switch (event.type) {
-              case "token":
-                onChunk(event.content);
-                break;
-              case "tool_start":
-                onToolStart(event.tool, event.input);
-                break;
-              case "tool_end":
-                onToolEnd(event.tool, event.output);
-                break;
-              case "error":
-                onError(event.message);
-                break;
-            }
-          } catch (err) {
-            console.error("Error parsing SSE line json:", err, line);
-          }
-        }
-      }
-    }
-  } catch (error: any) {
-    onError(error.message);
+  onToolStart?: (toolName: string, input: any) => void,
+  onToolEnd?: (toolName: string, output: string) => void,
+  onError?: (msg: string) => void,
+  images?: string[],
+  onThinking?: (text: string) => void,
+  signal?: AbortSignal
+): Promise<void>;
+export async function startChatStream(
+  sessionIdOrOpts: string | StreamOptions,
+  messageOrHandlers: string | StreamHandlers,
+  onChunk?: (token: string) => void,
+  onToolStart?: (toolName: string, input: any) => void,
+  onToolEnd?: (toolName: string, output: string) => void,
+  onError?: (msg: string) => void,
+  images?: string[],
+  onThinking?: (text: string) => void,
+  signal?: AbortSignal
+): Promise<void> {
+  if (typeof sessionIdOrOpts === 'object') {
+    return startChatStreamCore(sessionIdOrOpts, messageOrHandlers as StreamHandlers);
   }
+
+  const sessionId = sessionIdOrOpts;
+  const message = messageOrHandlers as string;
+
+  return startChatStreamCore(
+    { sessionId, message, images },
+    {
+      onEvent: (event: StreamEvent) => {
+        switch (event.type) {
+          case 'token':
+            if (onChunk) onChunk(event.text);
+            break;
+          case 'thinking_delta':
+            if (onThinking) onThinking(event.text);
+            break;
+          case 'tool_call':
+            if (onToolStart) onToolStart(event.title || event.toolId, event.args);
+            break;
+          case 'tool_result':
+            if (onToolEnd) {
+              onToolEnd(
+                event.toolName || event.toolId,
+                typeof event.output === 'string' ? event.output : JSON.stringify(event.output ?? '')
+              );
+            }
+            break;
+          case 'error':
+            if (onError) onError(event.message);
+            break;
+        }
+      },
+      onError: (errMsg: string) => {
+        if (onError) onError(errMsg);
+      },
+      signal,
+    }
+  );
 }

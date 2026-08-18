@@ -45,6 +45,21 @@ export async function getDSAQuestionById(id: string | number): Promise<APIDSAQue
 
 export async function waitForSubmissionResult(submissionId: number | string): Promise<CodeSubmitResponse> {
   const streamUrl = `${API_URL}/dsa/submissions/${submissionId}/stream`;
+
+  const parseResultData = (rawJson: string): CodeSubmitResponse | null => {
+    try {
+      const data = JSON.parse(rawJson);
+      return {
+        status: data.status || 'Error',
+        passed_tests: data.passed_tests ?? 0,
+        total_tests: data.total_tests ?? 0,
+        error_message: data.error_message || null,
+        execution_time_ms: data.execution_time_ms || 0,
+      };
+    } catch {
+      return null;
+    }
+  };
   
   return new Promise((resolve) => {
     let resolved = false;
@@ -66,72 +81,101 @@ export async function waitForSubmissionResult(submissionId: number | string): Pr
       });
     }, 45000);
 
-    try {
-      const eventSource = new EventSource(streamUrl);
-      
-      eventSource.addEventListener('result', (e: MessageEvent) => {
-        clearTimeout(timer);
-        eventSource.close();
-        try {
-          const data = JSON.parse(e.data);
-          finish({
-            status: data.status || 'Error',
-            passed_tests: data.passed_tests ?? 0,
-            total_tests: data.total_tests ?? 0,
-            error_message: data.error_message || null,
-            execution_time_ms: data.execution_time_ms || 0,
-          });
-        } catch {
-          finish({
-            status: 'Error',
-            passed_tests: 0,
-            total_tests: 0,
-            error_message: 'Failed to parse worker response.',
-            execution_time_ms: 0,
-          });
-        }
-      });
+    const runStream = async () => {
+      try {
+        const response = await apiClient.fetchWithAuth(streamUrl, {
+          headers: {
+            'Accept': 'text/event-stream',
+          },
+        });
 
-      eventSource.onerror = () => {
-        eventSource.close();
-        // Fallback polling loop
-        const poll = async () => {
-          for (let i = 0; i < 15; i++) {
-            await new Promise((r) => setTimeout(r, 2000));
-            if (resolved) return;
-            try {
-              const res = await apiClient.fetchWithAuth(`${API_URL}/dsa/submissions/${submissionId}/stream`);
-              const text = await res.text();
-              if (text.includes('event: result')) {
-                const match = text.match(/data: ({.*})/);
-                if (match && match[1]) {
-                  const data = JSON.parse(match[1]);
+        if (!response.ok || !response.body) {
+          throw new Error(`Stream request failed with status: ${response.status}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split(/\r?\n/);
+          buffer = lines.pop() || '';
+
+          let currentEvent = '';
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('event:')) {
+              currentEvent = trimmed.slice(6).trim();
+            } else if (trimmed.startsWith('data:')) {
+              const rawData = trimmed.slice(5).trim();
+              if (currentEvent === 'result' || (rawData.startsWith('{') && rawData.includes('status'))) {
+                const parsed = parseResultData(rawData);
+                if (parsed) {
                   clearTimeout(timer);
-                  finish({
-                    status: data.status || 'Error',
-                    passed_tests: data.passed_tests ?? 0,
-                    total_tests: data.total_tests ?? 0,
-                    error_message: data.error_message || null,
-                    execution_time_ms: data.execution_time_ms || 0,
-                  });
+                  try { reader.cancel(); } catch {}
+                  finish(parsed);
                   return;
                 }
               }
-            } catch { }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Direct stream reading error, trying EventSource fallback:', err);
+      }
+
+      if (resolved) return;
+
+      // EventSource fallback
+      try {
+        const eventSource = new EventSource(streamUrl);
+        eventSource.addEventListener('result', (e: MessageEvent) => {
+          clearTimeout(timer);
+          eventSource.close();
+          const parsed = parseResultData(e.data);
+          if (parsed) {
+            finish(parsed);
+          } else {
+            finish({
+              status: 'Error',
+              passed_tests: 0,
+              total_tests: 0,
+              error_message: 'Failed to parse worker response.',
+              execution_time_ms: 0,
+            });
+          }
+        });
+
+        eventSource.onerror = () => {
+          eventSource.close();
+          if (!resolved) {
+            clearTimeout(timer);
+            finish({
+              status: 'Error',
+              passed_tests: 0,
+              total_tests: 0,
+              error_message: 'Connection to evaluation stream failed.',
+              execution_time_ms: 0,
+            });
           }
         };
-        poll();
-      };
-    } catch {
-      clearTimeout(timer);
-      finish({
-        status: 'Error',
-        passed_tests: 0,
-        total_tests: 0,
-        error_message: 'Failed to open event stream.',
-        execution_time_ms: 0,
-      });
-    }
+      } catch (esErr) {
+        clearTimeout(timer);
+        finish({
+          status: 'Error',
+          passed_tests: 0,
+          total_tests: 0,
+          error_message: 'Failed to open event stream.',
+          execution_time_ms: 0,
+        });
+      }
+    };
+
+    runStream();
   });
 }
 
@@ -201,34 +245,71 @@ export async function runDSACode(id: string | number, code: string, language: st
   return initData;
 }
 
-export async function getDSAProfileStats(token: string): Promise<any> {
-  const response = await apiClient.fetchWithAuth(`${API_URL}/users/profile`);
+export async function getDSAProfileStats(token?: string): Promise<any> {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const response = await apiClient.fetchWithAuth(`${API_URL}/users/profile`, {
+    headers: Object.keys(headers).length > 0 ? headers : undefined,
+  });
   if (!response.ok) {
     throw new Error('Failed to fetch DSA profile stats');
   }
   return response.json();
 }
 
-export async function getUserProblemStatus(token: string): Promise<any> {
-  const response = await apiClient.fetchWithAuth(`${API_URL}/dsa/status`);
+export async function getUserProblemStatus(token?: string): Promise<any> {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const response = await apiClient.fetchWithAuth(`${API_URL}/dsa/status`, {
+    headers: Object.keys(headers).length > 0 ? headers : undefined,
+  });
   if (!response.ok) throw new Error('Failed to fetch problem status');
   return response.json();
 }
 
-export async function getRecommendations(token: string): Promise<any> {
-  const response = await apiClient.fetchWithAuth(`${API_URL}/dsa/recommendations`);
+export async function getRecommendations(token?: string): Promise<any> {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const response = await apiClient.fetchWithAuth(`${API_URL}/dsa/recommendations`, {
+    headers: Object.keys(headers).length > 0 ? headers : undefined,
+  });
   if (!response.ok) throw new Error('Failed to fetch recommendations');
   return response.json();
 }
 
-export async function submitSystemDesign(id: string | number, answer: string, token: string, base64Image?: string): Promise<any> {
+export async function submitSystemDesign(id: string | number, answer: string, token?: string, base64Image?: string): Promise<any> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
   const response = await apiClient.fetchWithAuth(`${API_URL}/system-design/questions/${id}/submit`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
+    headers,
     body: JSON.stringify({ answer_text: answer, image_data: base64Image })
   });
   if (!response.ok) throw new Error('Failed to submit system design');
   return response.json();
 }
+
+export async function getDashboardOverview(token?: string): Promise<any> {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const response = await apiClient.fetchWithAuth(`${API_URL}/dashboard/overview`, {
+    headers: Object.keys(headers).length > 0 ? headers : undefined,
+  });
+  if (!response.ok) {
+    throw new Error('Failed to fetch dashboard overview');
+  }
+  return response.json();
+}
+

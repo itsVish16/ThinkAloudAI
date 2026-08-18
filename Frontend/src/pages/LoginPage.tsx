@@ -92,14 +92,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
   return (
     <AuthLayout onNavigate={onNavigate}>
       <div className="auth-card">
-        {/* Tabs - Only show on login step */}
+        {/* Segmented Tabs - Only show on login step */}
         {step === 'login' && (
-          <div className="auth-tabs">
-            <button className="auth-tab active">Log in</button>
-            <button className="auth-tab" onClick={() => onNavigate('signup')}>Sign up</button>
+          <div className="auth-tabs-segmented">
+            <button className="auth-tab-segment active">Log in</button>
+            <button className="auth-tab-segment" onClick={() => onNavigate('signup')}>Sign up</button>
           </div>
         )}
 
+        {/* Card Header */}
         <div className="auth-card-header">
           <h2>
             {step === 'login' && 'Welcome back 👋'}
@@ -109,43 +110,62 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
           <p>
             {step === 'login' && 'Log in to continue your interview preparation journey.'}
             {step === 'forgot_password' && 'Enter your email address and we will send you a 6-digit code.'}
-            {step === 'reset_password' && `We sent a 6-digit code to ${email}`}
+            {step === 'reset_password' && `We sent a 6-digit verification code to ${email}`}
           </p>
         </div>
 
+        {/* Error / Success Notifications */}
         {errorMessage && (
-          <div className="auth-error-banner">
-            <ShieldWarning size={18} weight="fill" />
+          <div className="auth-banner-error">
+            <ShieldWarning size={20} weight="fill" style={{ flexShrink: 0, marginTop: '1px' }} />
             <span>{errorMessage}</span>
           </div>
         )}
 
         {successMessage && (
-          <div className="auth-error-banner" style={{ backgroundColor: 'rgba(52, 211, 153, 0.1)', color: '#34d399', borderLeftColor: '#34d399' }}>
-            <CheckCircle size={18} weight="fill" />
+          <div className="auth-banner-success">
+            <CheckCircle size={20} weight="fill" style={{ flexShrink: 0, marginTop: '1px' }} />
             <span>{successMessage}</span>
           </div>
         )}
 
         {step === 'login' && (
           <>
-            {/* Social Buttons */}
+            {/* Social Logins */}
             <div className="auth-social-row">
-              <button className="auth-social-btn" onClick={() => alert('Social Login coming soon!')} title="Continue with Google">
-                <GoogleLogo weight="bold" className="social-icon" style={{color: '#EA4335'}} />
+              <button 
+                type="button" 
+                className="auth-social-btn" 
+                onClick={() => alert('Google authentication is configured in production.')} 
+                title="Continue with Google"
+              >
+                <GoogleLogo weight="bold" className="social-icon" style={{ color: '#EA4335' }} />
+                <span>Google</span>
               </button>
-              <button className="auth-social-btn" onClick={() => alert('Social Login coming soon!')} title="Continue with GitHub">
+              <button 
+                type="button" 
+                className="auth-social-btn" 
+                onClick={() => alert('GitHub authentication is configured in production.')} 
+                title="Continue with GitHub"
+              >
                 <GithubLogo weight="fill" className="social-icon" />
+                <span>GitHub</span>
               </button>
-              <button className="auth-social-btn" onClick={() => alert('Social Login coming soon!')} title="Continue with LinkedIn">
-                <LinkedinLogo weight="fill" className="social-icon" style={{color: '#0A66C2'}} />
+              <button 
+                type="button" 
+                className="auth-social-btn" 
+                onClick={() => alert('LinkedIn authentication is configured in production.')} 
+                title="Continue with LinkedIn"
+              >
+                <LinkedinLogo weight="fill" className="social-icon" style={{ color: '#0A66C2' }} />
+                <span>LinkedIn</span>
               </button>
             </div>
 
-            <div className="auth-divider">or</div>
+            <div className="auth-divider">or continue with email</div>
 
             <form onSubmit={handleLoginSubmit} className="auth-form">
-              {/* Email */}
+              {/* Email Field */}
               <div className="auth-input-group">
                 <label className="auth-label">Email address</label>
                 <div className="input-wrapper">
@@ -154,7 +174,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@example.com"
+                    placeholder="name@domain.com"
                     className="auth-input-field"
                     required
                     disabled={isLoading}
@@ -162,7 +182,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
                 </div>
               </div>
 
-              {/* Password */}
+              {/* Password Field */}
               <div className="auth-input-group">
                 <label className="auth-label">Password</label>
                 <div className="input-wrapper">
@@ -180,35 +200,46 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
                     type="button" 
                     className="toggle-password-btn"
                     onClick={() => setShowPassword(!showPassword)}
+                    tabIndex={-1}
                   >
                     {showPassword ? <Eye size={18} /> : <EyeClosed size={18} />}
                   </button>
                 </div>
               </div>
 
+              {/* Options Row */}
               <div className="auth-options-row">
                 <label className="auth-checkbox-label">
-                  <input type="checkbox" className="auth-checkbox" />
-                  Remember me
+                  <input type="checkbox" className="auth-checkbox" defaultChecked />
+                  <span>Remember me</span>
                 </label>
-                <span className="forgot-pass-btn" onClick={() => { setStep('forgot_password'); setErrorMessage(null); }}>Forgot password?</span>
+                <span 
+                  className="forgot-pass-btn" 
+                  onClick={() => { setStep('forgot_password'); setErrorMessage(null); setSuccessMessage(null); }}
+                >
+                  Forgot password?
+                </span>
               </div>
 
+              {/* Submit CTA */}
               <button 
                 type="submit" 
                 className="auth-submit-btn"
                 disabled={isLoading || !email || !password}
               >
                 {isLoading ? (
-                  <div className="spinner-mini"></div>
+                  <div className="spinner-mini" />
                 ) : (
-                  <>Log in <ArrowRight size={18} weight="bold" /></>
+                  <>
+                    <span>Log in</span>
+                    <ArrowRight size={18} weight="bold" />
+                  </>
                 )}
               </button>
             </form>
 
             <div className="auth-redirect">
-              Don't have an account? <span onClick={() => onNavigate('signup')} className="auth-link">Sign up</span>
+              <span>Don't have an account? <strong onClick={() => onNavigate('signup')} className="auth-link">Sign up</strong></span>
             </div>
           </>
         )}
@@ -217,14 +248,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
           <>
             <form onSubmit={handleForgotPasswordSubmit} className="auth-form">
               <div className="auth-input-group">
-                <label className="auth-label">Email address</label>
+                <label className="auth-label">Registered email address</label>
                 <div className="input-wrapper">
                   <EnvelopeSimple weight="duotone" className="input-icon" size={20} />
                   <input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@example.com"
+                    placeholder="name@domain.com"
                     className="auth-input-field"
                     required
                     disabled={isLoading}
@@ -238,15 +269,20 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
                 disabled={isLoading || !email}
               >
                 {isLoading ? (
-                  <div className="spinner-mini"></div>
+                  <div className="spinner-mini" />
                 ) : (
-                  <>Send Reset Code <ArrowRight size={18} weight="bold" /></>
+                  <>
+                    <span>Send Reset Code</span>
+                    <ArrowRight size={18} weight="bold" />
+                  </>
                 )}
               </button>
             </form>
 
-            <div className="auth-redirect" style={{ marginTop: '1rem' }}>
-              <span onClick={() => { setStep('login'); setErrorMessage(null); }} className="auth-link">Back to Log in</span>
+            <div className="auth-redirect">
+              <span onClick={() => { setStep('login'); setErrorMessage(null); setSuccessMessage(null); }} className="auth-link">
+                &larr; Back to Log in
+              </span>
             </div>
           </>
         )}
@@ -255,18 +291,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
           <>
             <form onSubmit={handleResetPasswordSubmit} className="auth-form">
               <div className="auth-input-group">
-                <label className="auth-label">Reset Code (6 Digits)</label>
+                <label className="auth-label">6-Digit Verification Code</label>
                 <div className="input-wrapper">
-                  <LockKey weight="duotone" className="input-icon" size={20} />
                   <input
                     type="text"
                     value={otp}
-                    onChange={(e) => setOtp(e.target.value)}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
                     placeholder="123456"
-                    className="auth-input-field"
+                    className="auth-input-field auth-otp-input"
                     maxLength={6}
                     required
                     disabled={isLoading}
+                    autoFocus
                   />
                 </div>
               </div>
@@ -279,7 +315,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
                     type={showPassword ? 'text' : 'password'}
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Create new password"
+                    placeholder="Create a strong password"
                     className="auth-input-field"
                     required
                     disabled={isLoading}
@@ -288,6 +324,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
                     type="button" 
                     className="toggle-password-btn"
                     onClick={() => setShowPassword(!showPassword)}
+                    tabIndex={-1}
                   >
                     {showPassword ? <Eye size={18} /> : <EyeClosed size={18} />}
                   </button>
@@ -300,16 +337,21 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
                 disabled={isLoading || otp.length !== 6 || !newPassword}
               >
                 {isLoading ? (
-                  <div className="spinner-mini"></div>
+                  <div className="spinner-mini" />
                 ) : (
-                  <>Reset & Log in <ArrowRight size={18} weight="bold" /></>
+                  <>
+                    <span>Reset Password & Log in</span>
+                    <ArrowRight size={18} weight="bold" />
+                  </>
                 )}
               </button>
             </form>
 
-            <div className="auth-redirect" style={{ marginTop: '1rem', flexDirection: 'column', gap: '0.5rem' }}>
-              <div>Didn't receive a code? <span onClick={handleForgotPasswordSubmit} className="auth-link">Resend it</span></div>
-              <div><span onClick={() => { setStep('login'); setErrorMessage(null); }} className="auth-link">Back to Log in</span></div>
+            <div className="auth-redirect">
+              <span>Didn't receive a code? <strong onClick={handleForgotPasswordSubmit} className="auth-link">Resend it</strong></span>
+              <span onClick={() => { setStep('login'); setErrorMessage(null); setSuccessMessage(null); }} className="auth-link">
+                &larr; Back to Log in
+              </span>
             </div>
           </>
         )}
@@ -317,4 +359,5 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
     </AuthLayout>
   );
 };
+
 export default LoginPage;
