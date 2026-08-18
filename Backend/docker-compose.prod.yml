@@ -56,7 +56,36 @@ services:
           memory: 256M
 
   # ---------------------------------------------------------------------------
-  # 2. Redis In-Memory Cache, Chat Buffer, and Real-Time Pub/Sub
+  # 2. PostgreSQL Server (Self-Hosted Docker Database with 3 Isolated DBs)
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: thinkaloud-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-thinkaloud}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-thinkaloud_prod_secure}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-databases.sql:/docker-entrypoint-initdb.d/001-init-databases.sql:ro
+    networks:
+      - thinkaloud-net
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-thinkaloud}"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 15s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 1024M
+
+  # ---------------------------------------------------------------------------
+  # 3. Redis In-Memory Cache, Chat Buffer, and Real-Time Pub/Sub
   # ---------------------------------------------------------------------------
   redis:
     image: redis:7-alpine
@@ -66,6 +95,8 @@ services:
       - redis_data:/data
     networks:
       - thinkaloud-net
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -79,18 +110,21 @@ services:
           memory: 512M
 
   # ---------------------------------------------------------------------------
-  # 3. RabbitMQ Message Broker (Durable Event Bus & Async Execution)
+  # 4. RabbitMQ Message Broker (Durable Event Bus & Async Execution)
   # ---------------------------------------------------------------------------
   rabbitmq:
     image: rabbitmq:3-management-alpine
     container_name: thinkaloud-rabbitmq
     environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-guest}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-guest}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-thinkaloud}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-thinkaloud_rabbit_secret}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     networks:
       - thinkaloud-net
+    ports:
+      - "127.0.0.1:${RABBITMQ_PORT:-5672}:5672"
+      - "127.0.0.1:${RABBITMQ_MGMT_PORT:-15672}:15672"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
@@ -105,7 +139,7 @@ services:
           memory: 768M
 
   # ---------------------------------------------------------------------------
-  # 4. Datadog Observability & APM Agent
+  # 5. Datadog Observability & APM Agent
   # ---------------------------------------------------------------------------
   datadog-agent:
     image: gcr.io/datadoghq/agent:7
@@ -137,7 +171,7 @@ services:
           memory: 512M
 
   # ---------------------------------------------------------------------------
-  # 5. Scalable User Service (Auth, JWT, Profiles, Achievements)
+  # 6. Scalable User Service (Auth, JWT, Profiles, Achievements)
   # ---------------------------------------------------------------------------
   user-service:
     <<: *service-defaults
@@ -150,9 +184,11 @@ services:
     environment:
       <<: *common-env
       DD_SERVICE: user-service
-      DATABASE_URL: ${USER_SERVICE_DATABASE_URL:-${DATABASE_URL}}
+      DATABASE_URL: ${USER_SERVICE_DATABASE_URL:-postgresql+asyncpg://${POSTGRES_USER:-thinkaloud}:${POSTGRES_PASSWORD:-thinkaloud_prod_secure}@postgres:5432/user_service}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
       datadog-agent:
@@ -176,7 +212,7 @@ services:
           memory: 512M
 
   # ---------------------------------------------------------------------------
-  # 6. Main Service (DSA Execution, Chat Agent, Roadmaps, Dashboard)
+  # 7. Main Service (DSA Execution, Chat Agent, Roadmaps, Dashboard)
   # ---------------------------------------------------------------------------
   main-service:
     <<: *service-defaults
@@ -188,11 +224,13 @@ services:
     environment:
       <<: *common-env
       DD_SERVICE: main-service
-      DATABASE_URL: ${MAIN_SERVICE_DATABASE_URL:-${DATABASE_URL}}
+      DATABASE_URL: ${MAIN_SERVICE_DATABASE_URL:-postgresql+asyncpg://${POSTGRES_USER:-thinkaloud}:${POSTGRES_PASSWORD:-thinkaloud_prod_secure}@postgres:5432/main_service}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/1}
-      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://${RABBITMQ_DEFAULT_USER:-thinkaloud}:${RABBITMQ_DEFAULT_PASS:-thinkaloud_rabbit_secret}@rabbitmq:5672/}
       USER_SERVICE_URL: http://user-service:8000
     depends_on:
+      postgres:
+        condition: service_healthy
       user-service:
         condition: service_healthy
       redis:
@@ -220,7 +258,7 @@ services:
           memory: 768M
 
   # ---------------------------------------------------------------------------
-  # 7. AI Interviewer API (Token Generation, Interviews, Leaderboard)
+  # 8. AI Interviewer API (Token Generation, Interviews, Leaderboard)
   # ---------------------------------------------------------------------------
   ai-interviewer-api:
     <<: *service-defaults
@@ -233,12 +271,14 @@ services:
     environment:
       <<: *common-env
       DD_SERVICE: ai-interviewer-api
-      DATABASE_URL: ${INTERVIEWER_SERVICE_DATABASE_URL:-${DATABASE_URL}}
+      DATABASE_URL: ${INTERVIEWER_SERVICE_DATABASE_URL:-postgresql+asyncpg://${POSTGRES_USER:-thinkaloud}:${POSTGRES_PASSWORD:-thinkaloud_prod_secure}@postgres:5432/interviewer_service}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/2}
-      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://${RABBITMQ_DEFAULT_USER:-thinkaloud}:${RABBITMQ_DEFAULT_PASS:-thinkaloud_rabbit_secret}@rabbitmq:5672/}
       USER_SERVICE_URL: http://user-service:8000
       MAIN_SERVICE_URL: http://main-service:8001
     depends_on:
+      postgres:
+        condition: service_healthy
       user-service:
         condition: service_healthy
       main-service:
@@ -268,7 +308,7 @@ services:
           memory: 512M
 
   # ---------------------------------------------------------------------------
-  # 8. AI Interviewer Voice Worker (LiveKit WebRTC Agent, VAD, STT/TTS)
+  # 9. AI Interviewer Voice Worker (LiveKit WebRTC Agent, VAD, STT/TTS)
   # ---------------------------------------------------------------------------
   ai-interviewer-worker:
     <<: *service-defaults
@@ -281,12 +321,14 @@ services:
     environment:
       <<: *common-env
       DD_SERVICE: ai-interviewer-worker
-      DATABASE_URL: ${INTERVIEWER_SERVICE_DATABASE_URL:-${DATABASE_URL}}
+      DATABASE_URL: ${INTERVIEWER_SERVICE_DATABASE_URL:-postgresql+asyncpg://${POSTGRES_USER:-thinkaloud}:${POSTGRES_PASSWORD:-thinkaloud_prod_secure}@postgres:5432/interviewer_service}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/2}
-      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://${RABBITMQ_DEFAULT_USER:-thinkaloud}:${RABBITMQ_DEFAULT_PASS:-thinkaloud_rabbit_secret}@rabbitmq:5672/}
       USER_SERVICE_URL: http://user-service:8000
       MAIN_SERVICE_URL: http://main-service:8001
     depends_on:
+      postgres:
+        condition: service_healthy
       ai-interviewer-api:
         condition: service_healthy
       redis:
@@ -306,7 +348,7 @@ services:
           memory: 1536M
 
   # ---------------------------------------------------------------------------
-  # 9. AI Interviewer Post-Interview Analysis Worker (LLM Judge)
+  # 10. AI Interviewer Post-Interview Analysis Worker (LLM Judge)
   # ---------------------------------------------------------------------------
   ai-interviewer-analysis-worker:
     <<: *service-defaults
@@ -319,11 +361,13 @@ services:
     environment:
       <<: *common-env
       DD_SERVICE: ai-interviewer-analysis-worker
-      DATABASE_URL: ${INTERVIEWER_SERVICE_DATABASE_URL:-${DATABASE_URL}}
+      DATABASE_URL: ${INTERVIEWER_SERVICE_DATABASE_URL:-postgresql+asyncpg://${POSTGRES_USER:-thinkaloud}:${POSTGRES_PASSWORD:-thinkaloud_prod_secure}@postgres:5432/interviewer_service}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/2}
-      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://${RABBITMQ_DEFAULT_USER:-thinkaloud}:${RABBITMQ_DEFAULT_PASS:-thinkaloud_rabbit_secret}@rabbitmq:5672/}
       MAIN_SERVICE_URL: http://main-service:8001
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
       rabbitmq:
@@ -346,6 +390,7 @@ networks:
     driver: bridge
 
 volumes:
+  postgres_data:
   redis_data:
   rabbitmq_data:
   caddy_data:
