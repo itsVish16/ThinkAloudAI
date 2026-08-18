@@ -193,11 +193,11 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3).read()"
-      interval: 15s
+        - python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=5).read()"
+      interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 60s
     labels:
       com.thinkaloud.service: user-service
       com.datadoghq.tags.service: user-service
@@ -239,11 +239,11 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/', timeout=3).read()"
-      interval: 15s
+        - python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=5).read()"
+      interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 60s
     labels:
       com.thinkaloud.service: main-service
       com.datadoghq.tags.service: main-service
@@ -289,11 +289,11 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read()"
-      interval: 15s
+        - python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read()"
+      interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 40s
+      start_period: 60s
     labels:
       com.thinkaloud.service: ai-interviewer-api
       com.datadoghq.tags.service: ai-interviewer-api

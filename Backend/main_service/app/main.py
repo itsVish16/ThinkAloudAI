@@ -91,3 +91,8 @@ async def root():
             "submit_code": "POST /dsa/questions/{id}/submit",
         }
     }
+
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "service": "main-service"}
