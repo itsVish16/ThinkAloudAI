@@ -22,7 +22,8 @@ export interface APISession {
   created_at: string;
 }
 
-const API_URL = import.meta.env.VITE_API_URL || '';
+import { API_BASE_URL } from '../config/api';
+const API_URL = API_BASE_URL;
 
 export async function getSessions(): Promise<APISession[]> {
   const response = await apiClient.fetchWithAuth(`${API_URL}/sessions`);

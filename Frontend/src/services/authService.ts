@@ -1,6 +1,7 @@
 // src/services/authService.ts
 import { apiClient } from './apiClient';
-const API_URL = import.meta.env.VITE_API_URL || '';
+import { API_BASE_URL } from '../config/api';
+const API_URL = API_BASE_URL;
 const BASE_URL = `${API_URL}/api/v1/users`;
 
 async function handleApiError(response: Response, defaultMessage: string) {

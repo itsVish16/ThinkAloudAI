@@ -1,6 +1,7 @@
 // src/services/apiClient.ts
 
-export const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+import { API_BASE_URL as BASE_URL_CONFIG } from '../config/api';
+export const API_BASE_URL = BASE_URL_CONFIG;
 let isRefreshing = false;
 let failedQueue: Array<{ resolve: (token: string) => void; reject: (error: any) => void }> = [];
 
@@ -53,7 +54,7 @@ export const apiClient = {
       isRefreshing = true;
 
       try {
-        const API_URL = import.meta.env.VITE_API_URL || '';
+        const API_URL = API_BASE_URL;
         const refreshResponse = await fetch(`${API_URL}/api/v1/users/refresh`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

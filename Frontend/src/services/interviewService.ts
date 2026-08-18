@@ -10,7 +10,8 @@ export interface APIInterviewTypesResponse {
   types: APIInterviewType[];
 }
 
-const API_URL = import.meta.env.VITE_API_URL || '';
+import { API_BASE_URL } from '../config/api';
+const API_URL = API_BASE_URL;
 
 export async function getInterviewTypes(): Promise<APIInterviewType[]> {
   const response = await apiClient.fetchWithAuth(`${API_URL}/api/interview-types`);
