@@ -1,5 +1,6 @@
 import json
 import logging
+from typing import Dict, Any
 from aio_pika import connect_robust, Message, DeliveryMode
 from app.config import settings
 
@@ -15,15 +16,28 @@ async def get_mq_connection():
     return _rabbitmq_connection
 
 async def publish_execution_task(task_data: dict):
+    """
+    Publishes a code execution task to RabbitMQ with Datadog trace context propagation.
+    """
     try:
         connection = await get_mq_connection()
         channel = await connection.channel()
         queue = await channel.declare_queue("code_execution_queue", durable=True)
         
+        headers: Dict[str, Any] = {}
+        try:
+            from ddtrace import tracer
+            current_span = tracer.current_span()
+            if current_span:
+                tracer.inject(current_span.context, headers)
+        except Exception:
+            pass
+
         await channel.default_exchange.publish(
             Message(
                 body=json.dumps(task_data).encode(),
-                delivery_mode=DeliveryMode.PERSISTENT
+                delivery_mode=DeliveryMode.PERSISTENT,
+                headers=headers,
             ),
             routing_key="code_execution_queue"
         )

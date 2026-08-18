@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from aio_pika import connect_robust
+from aio_pika import connect_robust, IncomingMessage
 from app.config import settings
 from app.database import SessionLocal
 from sqlalchemy.future import select
@@ -10,29 +10,12 @@ from app.models.analytics import UserStats, LearningEvent, UserSkillScore
 logger = logging.getLogger(__name__)
 
 async def process_interview_completed(data: dict):
-    """
-    Handles the InterviewCompleted event.
-    Expected data payload:
-    {
-        "user_id": "string-uuid",
-        "interview_id": "uuid",
-        "score": 85.5,
-        "type": "System Design",
-        "domain": "system_design",
-        "technical_score": 88,
-        "communication_score": 82,
-        "english_score": 85,
-        "detailed_metrics": {...},
-        "feedback": "..."
-    }
-    """
     user_id = data.get("user_id")
     if not user_id:
         logger.error("InterviewCompleted event missing user_id")
         return
 
     async with SessionLocal() as db:
-        # 1. Update User Stats
         stats_res = await db.execute(select(UserStats).filter_by(user_id=user_id))
         stats = stats_res.scalars().first()
         
@@ -43,17 +26,14 @@ async def process_interview_completed(data: dict):
         stats.interviews_completed += 1
         
         score = float(data.get("score", 0.0))
-        # Update best score
         if int(score) > stats.best_interview_score:
             stats.best_interview_score = int(score)
             
-        # Update average score
         if stats.interviews_completed == 1:
             stats.avg_interview_score = score
         else:
             stats.avg_interview_score = round((stats.avg_interview_score * (stats.interviews_completed - 1) + score) / stats.interviews_completed, 2)
 
-        # 2. Update Domain Skills in UserSkillScore
         detailed = data.get("detailed_metrics") or {}
         tech_breakdown = detailed.get("technical_breakdown") or {}
         comm_breakdown = detailed.get("communication_breakdown") or {}
@@ -70,7 +50,6 @@ async def process_interview_completed(data: dict):
                 skills_to_update[f"Comm: {clean_name}"] = float(v)
 
         if not skills_to_update:
-            # Fallback to top-level domain score
             domain_name = (data.get("domain") or data.get("type") or "General").title()
             skills_to_update[domain_name] = score
 
@@ -81,11 +60,9 @@ async def process_interview_completed(data: dict):
                 skill = UserSkillScore(user_id=user_id, domain=domain, score=skill_score, problems_solved=1)
                 db.add(skill)
             else:
-                # Rolling average
                 skill.score = round((skill.score + skill_score) / 2.0, 2)
                 skill.problems_solved += 1
 
-        # 3. Add Learning Event
         event = LearningEvent(
             user_id=user_id,
             event_type="INTERVIEW_COMPLETED",
@@ -104,47 +81,60 @@ async def process_interview_completed(data: dict):
         await db.commit()
         logger.info(f"Successfully processed InterviewCompleted and updated skills for user {user_id}")
 
+
+async def handle_message(message: IncomingMessage):
+    span_ctx = None
+    try:
+        from ddtrace import tracer
+        if message.headers:
+            span_ctx = tracer.extract(message.headers)
+    except Exception:
+        pass
+
+    try:
+        from ddtrace import tracer
+        span_cm = tracer.trace("rabbitmq.consume.interview_completed", child_of=span_ctx, service="main-service")
+    except Exception:
+        span_cm = None
+
+    async def _execute():
+        async with message.process():
+            try:
+                body = message.body.decode()
+                event = json.loads(body)
+                if event.get("event") == "InterviewCompleted":
+                    await process_interview_completed(event.get("data", {}))
+            except Exception as e:
+                logger.error(f"Error processing event: {e}")
+
+    if span_cm:
+        with span_cm as span:
+            await _execute()
+    else:
+        await _execute()
+
+
 async def start_event_consumer():
-    """
-    Connects to RabbitMQ and listens for events directed at the main service.
-    """
     rabbitmq_url = settings.RABBITMQ_URL if hasattr(settings, 'RABBITMQ_URL') else "amqp://guest:guest@localhost:5672/"
-    
     while True:
         try:
             connection = await connect_robust(rabbitmq_url)
             channel = await connection.channel()
-            
-            # Declare exchange and queue
-            exchange = await channel.declare_exchange("thinkaloud_events", type="topic", durable=True)
+            exchange = await channel.declare_exchange(
+                "thinkaloud_events",
+                type="topic",
+                durable=True
+            )
             queue = await channel.declare_queue("main_service_events", durable=True)
-            
-            # Bind queue to listen for AI Interviewer events
             await queue.bind(exchange, routing_key="interview.completed")
-            
-            logger.info("Main Service Event Consumer started successfully.")
-            
+            logger.info("Event consumer connected and listening for thinkaloud_events.")
+
             async with queue.iterator() as queue_iter:
                 async for message in queue_iter:
-                    async with message.process():
-                        try:
-                            body = json.loads(message.body.decode())
-                            event_type = body.get("event")
-                            data = body.get("data", {})
-                            
-                            if event_type == "InterviewCompleted":
-                                await process_interview_completed(data)
-                            else:
-                                logger.info(f"Unhandled event type: {event_type}")
-                                
-                        except Exception as e:
-                            logger.error(f"Error processing message: {e}")
-                            
+                    await handle_message(message)
+        except asyncio.CancelledError:
+            logger.info("Event consumer task cancelled.")
+            break
         except Exception as e:
-            logger.error(f"RabbitMQ connection failed: {e}. Retrying in 5 seconds...")
-            try:
-                if 'connection' in locals() and connection and not connection.is_closed:
-                    await connection.close()
-            except Exception:
-                pass
+            logger.error(f"RabbitMQ connection failed in event consumer: {e}. Retrying in 5 seconds...")
             await asyncio.sleep(5)
