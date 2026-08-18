@@ -43,6 +43,9 @@ async def publish_interview_completed(
             "score": overall_score,
             "type": interview_type,
             "domain": domain,
+            "technical_score": technical_score,
+            "communication_score": communication_score,
+            "english_score": english_score,
             "feedback": feedback_text or "",
             "detailed_metrics": detailed_metrics or {},
         },
@@ -72,9 +75,11 @@ async def publish_interview_completed(
     except Exception as rmq_err:
         logger.error(f"Failed to publish to RabbitMQ: {rmq_err}")
 
-    # Update Leaderboard in Redis
+    # Update Leaderboard in Redis (Track highest score per candidate)
     try:
-        await redis_client.zincrby("global_leaderboard", overall_score, candidate_name)
+        current_lb_score = await redis_client.zscore("global_leaderboard", candidate_name)
+        if current_lb_score is None or overall_score > float(current_lb_score):
+            await redis_client.zadd("global_leaderboard", {candidate_name: overall_score})
     except Exception as lb_err:
         logger.error(f"Failed to update leaderboard: {lb_err}")
 

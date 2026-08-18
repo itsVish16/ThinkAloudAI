@@ -51,27 +51,46 @@ import httpx
 from app.config import settings
 from app.services.http_client import http_client
 
+from sqlalchemy import select
+from app.models.interview import InterviewSession, InterviewFeedback
+
 async def get_code_submissions(session_id: str) -> str:
+    # 1. First attempt to fetch formal submissions from Main Service
     try:
         response = await http_client.get(f"{settings.MAIN_SERVICE_URL}/dsa/submissions/{session_id}", timeout=10.0)
         if response.status_code == 200:
             submissions = response.json()
-            if not submissions:
-                return "No code submissions found."
-            
-            formatted = ""
-            for i, sub in enumerate(submissions):
-                formatted += f"--- Submission {i+1} ---\n"
-                formatted += f"Language: {sub.get('language')}\n"
-                formatted += f"Status: {sub.get('status')}\n"
-                if sub.get('error_message'):
-                    formatted += f"Error: {sub.get('error_message')}\n"
-                formatted += f"Code:\n{sub.get('code')}\n\n"
-            return formatted
-        return "Could not retrieve code submissions."
+            if submissions:
+                formatted = ""
+                for i, sub in enumerate(submissions):
+                    formatted += f"--- Submission {i+1} ---\n"
+                    formatted += f"Language: {sub.get('language')}\n"
+                    formatted += f"Status: {sub.get('status')}\n"
+                    if sub.get('error_message'):
+                        formatted += f"Error: {sub.get('error_message')}\n"
+                    formatted += f"Code:\n{sub.get('code')}\n\n"
+                return formatted
     except Exception as e:
-        logger.error(f"Failed to fetch code submissions: {e}")
-        return "Failed to fetch code submissions."
+        logger.warning(f"Failed to fetch formal submissions from main_service: {e}")
+
+    # 2. Fallback to latest unsubmitted code from session state
+    try:
+        async with AsyncSessionLocal() as db:
+            session_res = await db.execute(select(InterviewSession).where(InterviewSession.id == session_id))
+            sess = session_res.scalar_one_or_none()
+            if sess and sess.state_data:
+                latest_code = sess.state_data.get("latest_code")
+                latest_exec = sess.state_data.get("latest_execution")
+                if latest_code:
+                    formatted = "--- Latest Unsubmitted Code Snapshot ---\n"
+                    if latest_exec:
+                        formatted += f"Execution Result: {latest_exec}\n"
+                    formatted += f"Code:\n{latest_code}\n\n"
+                    return formatted
+    except Exception as db_err:
+        logger.error(f"Failed to fetch code snapshot fallback from db: {db_err}")
+
+    return "No code submissions or editor code found."
 
 async def analyze_and_save_interview(session_id: str, user_id: str, candidate_name: str, interview_type: str, messages: list, opik_trace_id: str = None):
     """
@@ -92,7 +111,8 @@ async def analyze_and_save_interview(session_id: str, user_id: str, candidate_na
     transcript = format_transcript(messages)
     code_subs_text = await get_code_submissions(session_id)
     
-    if interview_type.lower() == "system_design":
+    i_type = interview_type.lower()
+    if "system_design" in i_type or "sd" in i_type:
         schema_str = """{{
         "requirements_gathering": <int 0-100>,
         "high_level_architecture": <int 0-100>,
@@ -100,7 +120,7 @@ async def analyze_and_save_interview(session_id: str, user_id: str, candidate_na
         "trade_off_reasoning": <int 0-100>,
         "communication": <int 0-100>
     }}"""
-    elif interview_type.lower() == "behavioral":
+    elif "behavioral" in i_type or "hr" in i_type:
         schema_str = """{{
         "star_structure": <int 0-100>,
         "specificity": <int 0-100>,
@@ -108,7 +128,15 @@ async def analyze_and_save_interview(session_id: str, user_id: str, candidate_na
         "clarity": <int 0-100>,
         "conciseness": <int 0-100>
     }}"""
-    elif interview_type.lower() in ["ai_ml", "ml-engineer-infra", "agentic-ai-engineer"]:
+    elif "pm" in i_type or "product" in i_type:
+        schema_str = """{{
+        "user_empathy_and_scoping": <int 0-100>,
+        "product_sense_and_vision": <int 0-100>,
+        "prioritization_framework": <int 0-100>,
+        "metrics_and_tradeoffs": <int 0-100>,
+        "communication": <int 0-100>
+    }}"""
+    elif any(k in i_type for k in ["ai_ml", "ml-engineer", "agentic-ai", "machine_learning"]):
         schema_str = """{{
         "ml_fundamentals": <int 0-100>,
         "model_selection": <int 0-100>,
@@ -252,8 +280,24 @@ async def analyze_and_save_interview(session_id: str, user_id: str, candidate_na
             
         logger.info(f"Successfully saved feedback for session {session_id}")
         
-        # Average score
-        overall_score = (data.get("technical_score", 0) + data.get("communication_score", 0) + data.get("english_score", 0)) // 3
+        # Domain-weighted overall score
+        tech = data.get("technical_score", 0)
+        comm = data.get("communication_score", 0)
+        eng = data.get("english_score", 0)
+
+        i_type_clean = interview_type.lower()
+        if any(k in i_type_clean for k in ["dsa", "swe", "coding"]):
+            overall_score = round(0.60 * tech + 0.25 * comm + 0.15 * eng)
+        elif any(k in i_type_clean for k in ["system_design", "sd"]):
+            overall_score = round(0.55 * tech + 0.30 * comm + 0.15 * eng)
+        elif any(k in i_type_clean for k in ["behavioral", "hr"]):
+            overall_score = round(0.20 * tech + 0.70 * comm + 0.10 * eng)
+        elif any(k in i_type_clean for k in ["pm", "product"]):
+            overall_score = round(0.55 * tech + 0.35 * comm + 0.10 * eng)
+        elif any(k in i_type_clean for k in ["ai", "ml"]):
+            overall_score = round(0.60 * tech + 0.25 * comm + 0.15 * eng)
+        else:
+            overall_score = round(0.40 * tech + 0.40 * comm + 0.20 * eng)
         
         await publish_interview_completed(
             session_id=session_id,

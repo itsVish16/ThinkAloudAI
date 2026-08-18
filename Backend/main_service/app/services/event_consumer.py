@@ -5,7 +5,7 @@ from aio_pika import connect_robust
 from app.config import settings
 from app.database import SessionLocal
 from sqlalchemy.future import select
-from app.models.analytics import UserStats, LearningEvent
+from app.models.analytics import UserStats, LearningEvent, UserSkillScore
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,11 @@ async def process_interview_completed(data: dict):
         "interview_id": "uuid",
         "score": 85.5,
         "type": "System Design",
-        "transcript": "...",
+        "domain": "system_design",
+        "technical_score": 88,
+        "communication_score": 82,
+        "english_score": 85,
+        "detailed_metrics": {...},
         "feedback": "..."
     }
     """
@@ -38,18 +42,50 @@ async def process_interview_completed(data: dict):
             
         stats.interviews_completed += 1
         
-        score = data.get("score", 0.0)
+        score = float(data.get("score", 0.0))
         # Update best score
-        if score > stats.best_interview_score:
+        if int(score) > stats.best_interview_score:
             stats.best_interview_score = int(score)
             
-        # Update average score (moving average approximation for simplicity, or recompute)
+        # Update average score
         if stats.interviews_completed == 1:
             stats.avg_interview_score = score
         else:
-            stats.avg_interview_score = (stats.avg_interview_score * (stats.interviews_completed - 1) + score) / stats.interviews_completed
+            stats.avg_interview_score = round((stats.avg_interview_score * (stats.interviews_completed - 1) + score) / stats.interviews_completed, 2)
 
-        # 2. Add Learning Event
+        # 2. Update Domain Skills in UserSkillScore
+        detailed = data.get("detailed_metrics") or {}
+        tech_breakdown = detailed.get("technical_breakdown") or {}
+        comm_breakdown = detailed.get("communication_breakdown") or {}
+        
+        skills_to_update = {}
+        for k, v in tech_breakdown.items():
+            if isinstance(v, (int, float)):
+                clean_name = k.replace("_", " ").title()
+                skills_to_update[clean_name] = float(v)
+
+        for k, v in comm_breakdown.items():
+            if isinstance(v, (int, float)):
+                clean_name = k.replace("_", " ").title()
+                skills_to_update[f"Comm: {clean_name}"] = float(v)
+
+        if not skills_to_update:
+            # Fallback to top-level domain score
+            domain_name = (data.get("domain") or data.get("type") or "General").title()
+            skills_to_update[domain_name] = score
+
+        for domain, skill_score in skills_to_update.items():
+            skill_res = await db.execute(select(UserSkillScore).filter_by(user_id=user_id, domain=domain))
+            skill = skill_res.scalars().first()
+            if not skill:
+                skill = UserSkillScore(user_id=user_id, domain=domain, score=skill_score, problems_solved=1)
+                db.add(skill)
+            else:
+                # Rolling average
+                skill.score = round((skill.score + skill_score) / 2.0, 2)
+                skill.problems_solved += 1
+
+        # 3. Add Learning Event
         event = LearningEvent(
             user_id=user_id,
             event_type="INTERVIEW_COMPLETED",
@@ -58,13 +94,15 @@ async def process_interview_completed(data: dict):
             domain=data.get("type", "General"),
             metadata_json={
                 "score": score,
-                "type": data.get("type")
+                "type": data.get("type"),
+                "technical_score": data.get("technical_score"),
+                "communication_score": data.get("communication_score"),
             }
         )
         db.add(event)
         
         await db.commit()
-        logger.info(f"Successfully processed InterviewCompleted for user {user_id}")
+        logger.info(f"Successfully processed InterviewCompleted and updated skills for user {user_id}")
 
 async def start_event_consumer():
     """

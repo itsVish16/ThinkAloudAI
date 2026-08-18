@@ -28,6 +28,12 @@ class InterviewStage(str, Enum):
     AIML_FUNDAMENTALS = "aiml_fundamentals"
     AIML_SYSTEM = "aiml_system"
     
+    # Product Management sub-stages
+    PM_PROBLEM_FRAMING = "pm_problem_framing"
+    PM_USER_SEGMENTATION = "pm_user_segmentation"
+    PM_SOLUTION_BRAINSTORMING = "pm_solution_brainstorming"
+    PM_METRICS_AND_EXECUTION = "pm_metrics_and_execution"
+    
     # Legacy stages kept for backward compatibility / migration
     RESUME_PROBE = "resume_probe"
     TECHNICAL_ASSESSMENT = "technical_assessment"
@@ -78,6 +84,9 @@ class InterviewState(TypedDict):
     # Real-time IDE Context
     latest_code: Optional[str]
     latest_execution: Optional[Dict[str, Any]]
+    
+    # Non-polluting System Nudges (silence monitor / execution status)
+    system_prompt_nudges: Optional[List[str]]
     
     # Observability
     opik_trace_id: Optional[str]

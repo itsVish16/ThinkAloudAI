@@ -60,7 +60,10 @@ INTERVIEW_FLOWS: Dict[str, List[str]] = {
         InterviewStage.INTRO_AUDIO_CHECK.value,
         InterviewStage.INTRO_AGENDA.value,
         InterviewStage.INTRO_CANDIDATE.value,
-        InterviewStage.PRODUCT_SENSE_CORE.value,
+        InterviewStage.PM_PROBLEM_FRAMING.value,
+        InterviewStage.PM_USER_SEGMENTATION.value,
+        InterviewStage.PM_SOLUTION_BRAINSTORMING.value,
+        InterviewStage.PM_METRICS_AND_EXECUTION.value,
         InterviewStage.CANDIDATE_QA.value,
         InterviewStage.WRAP_UP.value,
         InterviewStage.COMPLETED.value,
@@ -126,31 +129,50 @@ async def generate_response(state: InterviewState) -> Dict[str, Any]:
     questions = state.get("ai_selected_questions", [])
     active_q = questions[active_idx] if active_idx < len(questions) else None
 
-    # Format interview_type to make AI greeting more natural
+    # Format interview_type and contextual intros
     i_type_raw = state.get("interview_type", "General")
-    if "system_design" in i_type_raw.lower() or "sd" in i_type_raw.lower():
+    norm_type = normalize_interview_type(i_type_raw)
+    candidate_name = state.get("candidate_name", "Candidate")
+
+    if norm_type == "system_design":
         formatted_type = "System Design"
-    elif "dsa" in i_type_raw.lower() or "swe" in i_type_raw.lower():
+        stage_agenda_desc = "Designing a scalable distributed architecture on the whiteboard"
+        intro_trans_text = f"Great background, {candidate_name}! Let's jump into our system design challenge on the whiteboard. Take a moment to review the scenario, and let me know if you have any questions."
+    elif norm_type == "dsa":
         formatted_type = "Data Structures and Algorithms"
-    elif "pm" in i_type_raw.lower() or "product" in i_type_raw.lower():
+        stage_agenda_desc = "Solving two DSA coding problems in the editor on screen"
+        intro_trans_text = f"Great background, {candidate_name}! Let's jump into the first problem on your screen. Take a minute to read through it, and let me know if you have any clarifying questions."
+    elif norm_type == "pm":
         formatted_type = "Product Management"
-    elif "hr" in i_type_raw.lower() or "behavioral" in i_type_raw.lower():
+        stage_agenda_desc = "Product sense, user problem scoping, solution prioritization, and success metrics"
+        intro_trans_text = f"Great background, {candidate_name}! Let's dive right into our product management scenario today. I'm excited to hear how you frame the target opportunity."
+    elif norm_type == "hr":
         formatted_type = "Behavioral"
-    elif "ai" in i_type_raw.lower() or "ml" in i_type_raw.lower():
+        stage_agenda_desc = "Behavioral scenarios, leadership examples, and past engineering impact"
+        intro_trans_text = f"Great background, {candidate_name}! Let's begin with our first behavioral scenario. I'm interested in hearing about your past engineering experiences and leadership."
+    elif norm_type == "ai_ml":
         formatted_type = "AI and Machine Learning"
+        stage_agenda_desc = "AI/ML modeling fundamentals, loss formulation, and production inference architecture"
+        intro_trans_text = f"Great background, {candidate_name}! Let's dive into our AI and machine learning challenge today. Let's start with objective framing and architecture."
     else:
         formatted_type = i_type_raw.replace("_", " ").title()
+        stage_agenda_desc = "Technical assessment, engineering deep dives, and problem solving"
+        intro_trans_text = f"Great background, {candidate_name}! Let's dive into our technical discussion today."
 
     # Format active question nicely
     if isinstance(active_q, dict):
         q_title = active_q.get("title", "")
         q_desc = active_q.get("description", "")
         q_diff = active_q.get("difficulty", "")
-        formatted_q = f"Title: {q_title} (Difficulty: {q_diff})\nDescription:\n{q_desc}"
+        formatted_q = f"Title: {q_title}"
+        if q_diff:
+            formatted_q += f" (Difficulty: {q_diff})"
+        if q_desc:
+            formatted_q += f"\nDescription:\n{q_desc}"
     elif active_q:
         formatted_q = str(active_q)
     else:
-        formatted_q = "None"
+        formatted_q = "General Technical Discussion"
 
     # Format execution output nicely
     exec_raw = state.get("latest_execution")
@@ -172,13 +194,15 @@ async def generate_response(state: InterviewState) -> Dict[str, Any]:
     code_str = state.get("latest_code") or "None"
 
     prompt = prompt.format(
-        candidate_name=state.get("candidate_name", "Candidate"),
+        candidate_name=candidate_name,
         elapsed_minutes=elapsed_minutes,
         max_duration_minutes=max_duration,
         remaining_minutes=remaining_minutes,
         current_date=current_date,
         time_warning=time_warning,
         interview_type=formatted_type,
+        stage_agenda_description=stage_agenda_desc,
+        intro_transition_text=intro_trans_text,
         current_active_question=formatted_q,
         latest_code=code_str,
         latest_execution=formatted_exec,
@@ -292,15 +316,25 @@ async def evaluate_and_route(state: InterviewState) -> Dict[str, Any]:
     should_advance = objective_met or turns_in_stage >= 10 or time_exceeded
     should_end = state.get("should_end", False)
 
-    # Multi-question loop: when the evaluator signals trigger_next_question and
-    # more problems remain, loop back to dsa_presentation instead of advancing
-    # linearly past the DSA stages.
+    # Track-specific multi-question loop
     questions = state.get("ai_selected_questions", [])
     current_idx = state.get("active_question_index", 0)
     active_question_index = current_idx  # default: no change
 
     if trigger_next_q and current_idx < len(questions) - 1:
-        next_stage = InterviewStage.DSA_PRESENTATION.value
+        if normalized_type == "dsa":
+            next_stage = InterviewStage.DSA_PRESENTATION.value
+        elif normalized_type == "hr":
+            next_stage = InterviewStage.BEHAVIORAL_QUESTION.value
+        elif normalized_type == "pm":
+            next_stage = InterviewStage.PM_PROBLEM_FRAMING.value
+        elif normalized_type == "ai_ml":
+            next_stage = InterviewStage.AIML_FUNDAMENTALS.value
+        elif normalized_type == "system_design":
+            next_stage = InterviewStage.SYSTEM_DESIGN_REQUIREMENTS.value
+        else:
+            next_stage = InterviewStage.RESUME_PROBE.value
+
         active_question_index = current_idx + 1
         turns_in_stage = 0
     elif current_stage == InterviewStage.COMPLETED.value:
