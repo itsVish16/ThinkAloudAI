@@ -109,7 +109,7 @@ class SystemDesignService:
         llm = ChatOpenAI(
             model=model_name,
             base_url=settings.FIREWORKS_BASE_URL,
-            api_key=settings.FIREWORKS_API_KEY,
+            api_key=settings.FIREWORKS_API_KEY or "dummy-api-key-for-startup",
             temperature=0.2,
             model_kwargs={"response_format": {"type": "json_object"}},
         )
