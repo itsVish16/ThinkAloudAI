@@ -48,9 +48,14 @@ class RoadmapService:
 
     @staticmethod
     async def get_user_roadmaps(db: AsyncSession, user_id: str) -> List[Roadmap]:
-        query = select(Roadmap).filter(Roadmap.user_id == user_id).order_by(Roadmap.created_at.desc())
+        query = (
+            select(Roadmap)
+            .options(selectinload(Roadmap.topics).selectinload(RoadmapTopic.items))
+            .filter(Roadmap.user_id == user_id)
+            .order_by(Roadmap.created_at.desc())
+        )
         result = await db.execute(query)
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     @staticmethod
     async def get_roadmap(roadmap_id: int, db: AsyncSession, user_id: str) -> Roadmap:
@@ -81,7 +86,7 @@ class RoadmapService:
             topic = RoadmapTopic(
                 roadmap_id=roadmap.id,
                 title=topic_in.title,
-                order=topic_in.order,
+                order_index=topic_in.order_index,
             )
             db.add(topic)
             await db.flush()

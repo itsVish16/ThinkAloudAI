@@ -3,7 +3,8 @@ import json
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import SessionLocal, redis_client
-from app.models.chat import ChatMessageModel
+from sqlalchemy.future import select
+from app.models.chat import ChatSession, ChatMessageModel
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,14 @@ async def flush_session_buffer(redis, session_key: str):
         if messages:
             try:
                 async with SessionLocal() as db:
+                    # First verify or create parent ChatSession records to prevent FK violations
+                    session_ids = {m["session_id"] for m in messages if "session_id" in m}
+                    for s_id in session_ids:
+                        res = await db.execute(select(ChatSession).filter(ChatSession.id == s_id))
+                        if not res.scalars().first():
+                            db.add(ChatSession(id=s_id))
+                    await db.flush()
+
                     db_messages = [
                         ChatMessageModel(
                             session_id=msg_data["session_id"],
@@ -68,6 +77,20 @@ async def flush_chat_buffer():
     """Discovers all per-session chat buffers via scan_iter and flushes each atomically."""
     try:
         redis = redis_client
+        
+        # Drain legacy global buffer if any items exist
+        legacy_msgs = await redis.lrange("chat:buffer", 0, -1)
+        if legacy_msgs:
+            await redis.delete("chat:buffer")
+            for raw in legacy_msgs:
+                try:
+                    data = json.loads(raw)
+                    s_id = data.get("session_id")
+                    if s_id:
+                        await redis.rpush(f"chat:buffer:{s_id}", raw)
+                except Exception:
+                    pass
+
         session_keys = []
         async for key in redis.scan_iter("chat:buffer:*"):
             session_keys.append(key)

@@ -15,7 +15,7 @@ import {
 } from "../state/chatReducer";
 import { startChatStream, type StreamEvent } from "../state/chatStream";
 import { getSessionMessages, type APIMessage } from "../services/chatService";
-import { getRoadmaps, type Roadmap } from "../services/roadmapService";
+import { getRoadmaps, getRoadmapById, type Roadmap } from "../services/roadmapService";
 import type { MessageRole } from "../components/chat/MessageBubble";
 
 export interface UseChatSessionOptions {
@@ -52,8 +52,9 @@ async function hydrateHistory(msgs: APIMessage[]): Promise<Message[]> {
   }
 
   const seenRoadmapIds = new Set<number>();
+  const hydrated: Message[] = [];
 
-  return msgs.map((m) => {
+  for (const m of msgs) {
     let content = m.content;
     let roadmapData: Roadmap | undefined;
 
@@ -62,15 +63,23 @@ async function hydrateHistory(msgs: APIMessage[]): Promise<Message[]> {
       if (!isNaN(rId)) {
         if (seenRoadmapIds.has(rId)) {
           // If we already showed this exact roadmap in this session, skip rendering it again to avoid UI spam
-          return null;
+          continue;
         }
         roadmapData = allRoadmaps.find((r) => r.id === rId);
+        if (!roadmapData) {
+          try {
+            roadmapData = await getRoadmapById(rId);
+          } catch {
+            roadmapData = undefined;
+          }
+        }
         if (roadmapData) seenRoadmapIds.add(rId);
       }
       
       if (!roadmapData) {
         content = "*(Roadmap data not found or deleted)*";
-        return { id: m.id.toString(), role: "assistant" as MessageRole, content };
+        hydrated.push({ id: m.id.toString(), role: "assistant" as MessageRole, content });
+        continue;
       }
       content = "";
     } else {
@@ -88,13 +97,15 @@ async function hydrateHistory(msgs: APIMessage[]): Promise<Message[]> {
       }
     }
 
-    return {
+    hydrated.push({
       id: m.id.toString(),
       role: m.role as MessageRole | "roadmap",
       content,
       roadmapData,
-    } as Message;
-  }).filter((m): m is Message => m !== null);
+    } as Message);
+  }
+
+  return hydrated;
 }
 
 export function useChatSession(opts: UseChatSessionOptions): UseChatSessionApi {
@@ -222,12 +233,20 @@ export function useChatSession(opts: UseChatSessionOptions): UseChatSessionApi {
           onRenameRef.current?.(targetSessionId, event.title);
           break;
         case "roadmap":
-          getRoadmaps().then(roadmaps => {
-            const roadmap = roadmaps.find(r => r.id.toString() === event.id);
-            if (roadmap) {
-              dispatch({ type: "ROADMAP_APPEND", roadmap });
-            }
-          }).catch(e => console.error("Failed to fetch roadmap by ID", e));
+          getRoadmapById(event.id)
+            .then(roadmap => {
+              if (roadmap) {
+                dispatch({ type: "ROADMAP_APPEND", roadmap });
+              }
+            })
+            .catch(() => {
+              getRoadmaps().then(roadmaps => {
+                const roadmap = roadmaps.find(r => r.id.toString() === event.id);
+                if (roadmap) {
+                  dispatch({ type: "ROADMAP_APPEND", roadmap });
+                }
+              }).catch(e => console.error("Failed to fetch roadmap by ID", e));
+            });
           break;
         case "done":
           // Only finalize if this is still the active stream.
