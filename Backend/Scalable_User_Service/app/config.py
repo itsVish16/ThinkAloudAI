@@ -63,8 +63,9 @@ class Settings(BaseSettings):
     email_from: str = "noreply@example.com"
     frontend_base_url: str = "http://localhost:3000"
     email_delivery_enabled: bool = False
-    cors_allowed_origins: str = (
-        "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000"
+    cors_allowed_origins: str = Field(
+        default="https://thinkaloudai.tech,https://www.thinkaloudai.tech,http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000",
+        validation_alias=AliasChoices("CORS_ALLOWED_ORIGINS", "cors_allowed_origins")
     )
 
     @cached_property

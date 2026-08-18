@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     TAVILY_API_KEY: str = ""
     ADMIN_EMAILS: str = "vishal@example.com,vishal@thinkaloud.ai,vishalsaini160204@gmail.com"
     CORS_ALLOWED_ORIGINS: str = (
-        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000"
+        "https://thinkaloudai.tech,https://www.thinkaloudai.tech,http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000"
     )
 
     @property
