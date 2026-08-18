@@ -155,7 +155,7 @@ tools = [get_current_time, web_search, get_dsa_questions, get_user_submissions, 
 llm = ChatOpenAI(
     model=settings.FIREWORKS_MODEL,
     base_url=settings.FIREWORKS_BASE_URL,
-    api_key=settings.FIREWORKS_API_KEY,
+    api_key=settings.FIREWORKS_API_KEY or "dummy-api-key-for-startup",
     max_tokens=2048,
     temperature=0.4
 )
