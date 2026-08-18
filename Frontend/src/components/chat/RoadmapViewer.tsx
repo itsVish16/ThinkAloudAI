@@ -152,6 +152,7 @@ export const RoadmapViewer: React.FC<RoadmapViewerProps> = ({ roadmap, onNavigat
                             
                             // Optimistic update
                             const isDone = completedItems.has(item.id);
+                            const nextCompleted = !isDone;
                             setCompletedItems(prev => {
                               const next = new Set(prev);
                               if (isDone) next.delete(item.id);
@@ -160,7 +161,7 @@ export const RoadmapViewer: React.FC<RoadmapViewerProps> = ({ roadmap, onNavigat
                             });
                             
                             try {
-                              await toggleRoadmapItem(roadmap.id, topic.id, item.id);
+                              await toggleRoadmapItem(item.id, nextCompleted);
                             } catch (error) {
                               console.error("Failed to toggle item", error);
                               // Revert on failure

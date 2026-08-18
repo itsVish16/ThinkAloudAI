@@ -211,9 +211,30 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, user, onLogout
       }
     }
   }, [activeSection, user]);
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false); // Can be repurposed or removed
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const userDropdownRef = useRef<HTMLDivElement>(null);
+
+  const adminEmails = (import.meta.env.VITE_ADMIN_EMAILS || 'vishal@thinkaloud.ai,vishalsaini160204@gmail.com,vishal@example.com')
+    .split(',')
+    .map((e: string) => e.trim().toLowerCase());
+
+  const isAdmin = Boolean(
+    (user?.role && user.role.toLowerCase() === 'admin') ||
+    (user?.is_admin === true) ||
+    (user?.email && adminEmails.includes(user.email.toLowerCase()))
+  );
+
+  // Close sidebar profile dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target as Node)) {
+        setUserDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -236,11 +257,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, user, onLogout
           getDSAQuestions(),
           (async () => {
             const token = localStorage.getItem('access_token');
-            if (!token) return { solved_questions: [] };
+            if (!token) return [];
             try {
               const { getUserProblemStatus } = await import('../services/dsaService');
               return await getUserProblemStatus(token);
-            } catch (e) { return { solved_questions: [] }; }
+            } catch (e) { return []; }
           })(),
           (async () => {
             const token = localStorage.getItem('access_token');
@@ -256,20 +277,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, user, onLogout
           id: q.id.toString(),
           title: q.title,
           difficulty: q.difficulty as any,
-          category: 'Algorithms', // Default since API does not return category
+          category: q.category || 'Algorithms',
           acceptance: 'N/A',
           timeLimit: '2.0s',
           memoryLimit: '256MB',
           description: q.description,
-          starterCode: { javascript: '', python: '', cpp: '', java: '' },
+          starterCode: { javascript: '', python: q.python_starter_code || '', cpp: q.cpp_starter_code || '', java: '' },
           testCases: [],
-          hints: [],
-          optimalComplexity: { time: 'O(N)', space: 'O(1)' }
+          hints: q.hints ? [q.hints] : [],
+          optimalComplexity: { time: q.optimal_time_complexity || 'O(N)', space: q.optimal_space_complexity || 'O(1)' }
         }));
         setApiQuestions(mapped);
         
         const solvedSet = new Set<string>();
-        statusData.solved_questions?.forEach((q: any) => solvedSet.add(q.question_id.toString()));
+        const solvedList = Array.isArray(statusData)
+          ? statusData
+          : (Array.isArray(statusData?.solved_questions) ? statusData.solved_questions : []);
+        solvedList.forEach((q: any) => {
+          const qId = q.question_id ?? q.id ?? q;
+          if (qId !== undefined && qId !== null) {
+            solvedSet.add(qId.toString());
+          }
+        });
         setSolvedProblemIds(solvedSet);
         setRecommendedProblems(recData || []);
       } catch (err) {
@@ -365,7 +394,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, user, onLogout
   const handleSelectChat = (chatId: string) => {
     setActiveChatId(chatId);
     setActiveSection('chat');
-    setIsHistoryOpen(false); // Close history pane on click
   };
 
   const handleDeleteChat = async (e: React.MouseEvent, chatId: string) => {
@@ -534,44 +562,60 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, user, onLogout
         </div>
 
         {/* User profile popup activator at bottom */}
-        <div className="sidebar-bottom-profile" style={{ marginTop: 'auto', padding: isSidebarExpanded ? '0 8px 16px 8px' : '0 0 16px 0', display: 'flex', justifyContent: 'center' }}>
+        <div 
+          className="sidebar-bottom-profile" 
+          ref={userDropdownRef}
+          style={{ marginTop: 'auto', padding: isSidebarExpanded ? '0 8px 16px 8px' : '0 0 16px 0', display: 'flex', justifyContent: 'center', position: 'relative' }}
+        >
           <button 
             className={`sidebar-profile-button ${!isSidebarExpanded ? 'collapsed' : ''}`}
             onClick={() => setUserDropdownOpen(!userDropdownOpen)}
             title="Account Options"
           >
             <div className="sidebar-profile-circle-badge">
-              {user?.full_name ? user.full_name.substring(0, 2).toUpperCase() : 'U'}
+              {user?.full_name ? user.full_name.substring(0, 2).toUpperCase() : (user?.username ? user.username.substring(0, 2).toUpperCase() : 'U')}
             </div>
-            {isSidebarExpanded && <span className="sidebar-profile-name">{user?.full_name || 'User'}</span>}
+            {isSidebarExpanded && <span className="sidebar-profile-name">{user?.full_name || user?.username || 'User'}</span>}
           </button>
 
           {userDropdownOpen && (
             <div className="user-profile-popover-card" style={{ bottom: '70px', left: isSidebarExpanded ? '16px' : '60px', width: '220px' }}>
               <div className="popover-profile-header">
-                <span className="name">{user?.full_name || 'User'}</span>
-                <span className="email">{user?.email || 'user@example.com'}</span>
+                <span className="name">{user?.full_name || user?.username || 'Candidate'}</span>
+                <span className="email" title={user?.email}>{user?.email || 'candidate@thinkaloud.ai'}</span>
               </div>
               <div className="popover-card-divider"></div>
               <button 
                 className="btn-popover-action btn-profile" 
-                onClick={() => onNavigate('profile')}
+                onClick={() => {
+                  setUserDropdownOpen(false);
+                  onNavigate('profile');
+                }}
                 style={{ marginBottom: '0.25rem' }}
               >
                 <User size={14} />
                 <span>My Profile</span>
               </button>
-              {user?.email && (import.meta.env.VITE_ADMIN_EMAILS || 'vishalsaini160204@gmail.com,vishal@thinkaloud.ai,vishal@example.com').split(',').map((e: string) => e.trim()).includes(user.email) && (
+              {isAdmin && (
                 <button 
                   className="btn-popover-action btn-profile" 
-                  onClick={() => onNavigate('admin')}
-                  style={{ marginBottom: '0.25rem' }}
+                  onClick={() => {
+                    setUserDropdownOpen(false);
+                    onNavigate('admin');
+                  }}
+                  style={{ marginBottom: '0.25rem', color: '#f59e0b' }}
                 >
                   <Info size={14} />
                   <span>Admin Panel</span>
                 </button>
               )}
-              <button className="btn-popover-action btn-logout" onClick={triggerLogout}>
+              <button 
+                className="btn-popover-action btn-logout" 
+                onClick={() => {
+                  setUserDropdownOpen(false);
+                  triggerLogout();
+                }}
+              >
                 <SignOut size={14} />
                 <span>Log Out</span>
               </button>
@@ -584,7 +628,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, user, onLogout
 
       <main className="workspace-main-content">
         {activeSection === 'home' && (
-          <DashboardOverview user={user} langgraphProfile={langgraphProfile} onNavigate={onNavigate} />
+          <DashboardOverview
+            user={user}
+            langgraphProfile={langgraphProfile}
+            onNavigate={(dest, params) => {
+              if (params?.questionId) {
+                onNavigate('practice', params);
+              } else if (['home', 'chat', 'practice', 'interview', 'schedules', 'progress'].includes(dest)) {
+                setActiveSection(dest as any);
+              } else {
+                onNavigate(dest, params);
+              }
+            }}
+            onSelectSection={(sec) => setActiveSection(sec as any)}
+          />
         )}
 
         {/* PANEL 1: AI Chat Assistant */}
@@ -743,109 +800,148 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, user, onLogout
             <div className="panel-header-section interview-panel-header">
               <div>
                 <h2>Mock Interviews</h2>
-                <p>Choose a format, check your setup, and practise in a focused live session.</p>
+                <p>Choose an interview track to start your AI voice practice session.</p>
               </div>
               <button className="interview-header-action" onClick={() => onNavigate('discussion')}>
                 <PlusSign size={15} />
-                <span>Custom session</span>
+                <span>Custom Session</span>
               </button>
             </div>
 
             <div className="panel-content-scroller">
-              <div className="interview-command-center">
-                <div className="interview-command-main">
-                  <div className="interview-command-icon">
-                    <InterviewIcon size={22} />
-                  </div>
-                  <div>
-                    <span className="interview-command-kicker">Interview workspace</span>
-                    <h3>Pick a round and start when you are ready.</h3>
-                    <p>Every session begins with device checks before joining your AI interviewer.</p>
-                  </div>
-                </div>
-                <div className="interview-command-stats">
-                  <div className="interview-stat-pill" title="Available interview modes">
-                    <Sparkle size={14} />
-                    <span>{dynamicTemplates.length + 1} modes</span>
-                  </div>
-                  <div className="interview-stat-pill" title="Typical session duration">
-                    <Clock size={14} />
-                    <span>35-60 min</span>
-                  </div>
-                  <div className="interview-stat-pill" title="Completed interview scorecards">
-                    <MessageIcon size={14} />
-                    <span>{pastInterviews.length} scorecards</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="interview-grid">
-                {/* Static Discussion Card */}
-                <InterviewCard onClick={() => onNavigate('discussion')}>
-                  <span className="int-bracket">&#8220;&#8221;</span>
-                  <div className="int-icon-row">
-                    <div className="int-icon-box">
-                      <svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 1 1-3.5-6.6"/><path d="M21 4v5h-5"/></svg>
+              {/* Compact Minimalist Grid */}
+              <div className="compact-int-grid">
+                {/* 1. DSA */}
+                <div 
+                  className="compact-int-card"
+                  onClick={() => onNavigate('pre-join', { targetPage: 'dsa-interview', templateId: 'dsa', templateName: 'DSA & Coding' })}
+                >
+                  <div className="cic-head">
+                    <div className="cic-icon-box">
+                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
                     </div>
-                    <div className="int-status"><div className="int-wave"><span></span><span></span><span></span><span></span><span></span></div>AI ready</div>
+                    <div className="cic-pills">
+                      <span className="cic-pill">Live IDE</span>
+                      <span className="cic-pill cic-duration">45 min</span>
+                    </div>
                   </div>
-                  <span className="int-tag">CASE STUDY</span>
-                  <h2>Discussion &amp; Deck Interview</h2>
-                  <p>Present systems or architecture reviews. Practice design loops using slides, PPTs, structural diagrams, and collaborative annotation screens.</p>
-                  <div className="int-meta">
-                    <div><span className="int-val">Flexible</span><span className="int-lab">Duration</span></div>
-                    <div><span className="int-val">Whiteboard</span><span className="int-lab">Format</span></div>
-                    <div><span className="int-val">System Design</span><span className="int-lab">Focus</span></div>
+                  <h3 className="cic-title">DSA &amp; Coding</h3>
+                  <p className="cic-desc">Solve algorithmic challenges with an embedded Monaco editor and real-time voice feedback.</p>
+                  <div className="cic-footer">
+                    <span className="cic-action-text">Start Interview</span>
+                    <ArrowRight size={14} className="cic-arrow" />
                   </div>
-                  <button className="int-btn">Launch <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
-                </InterviewCard>
+                </div>
 
-                {/* Dynamic Templates */}
-                {dynamicTemplates.map((template) => {
-                  const meta = getInterviewPresetMeta(template);
-                  const isDSA = template.id.includes('dsa') || template.id.includes('swe');
-                  const isSystem = template.id.includes('system_design') || template.id.includes('sd');
-                  
-                  return (
-                    <InterviewCard 
-                      key={template.id}
-                      onClick={() => {
-                        if (isDSA) {
-                          onNavigate('pre-join', { targetPage: 'dsa-interview', templateId: template.id, templateName: template.name });
-                        } else if (isSystem) {
-                          onNavigate('pre-join', { targetPage: 'system-design-interview', templateId: template.id, templateName: template.name });
-                        } else {
-                          onNavigate('pre-join', { targetPage: 'general-interview', templateId: template.id, templateName: template.name });
-                        }
-                      }}
-                    >
-                      {isDSA && <span className="int-bracket">&lt;/&gt;</span>}
-                      {isSystem && <span className="int-bracket">&#9737;</span>}
-                      {!isDSA && !isSystem && <span className="int-bracket">&#8220;&#8221;</span>}
-                      
-                      <div className="int-icon-row">
-                        <div className="int-icon-box">
-                          {isDSA && <svg viewBox="0 0 24 24"><path d="M8 6L3 12L8 18M16 6L21 12L16 18"/></svg>}
-                          {isSystem && <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.2"/><circle cx="5" cy="19" r="2.2"/><circle cx="19" cy="19" r="2.2"/><path d="M12 7.2V12M12 12L6.4 17.2M12 12l5.6 5.2"/></svg>}
-                          {!isDSA && !isSystem && <svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 1 1-3.5-6.6"/><path d="M21 4v5h-5"/></svg>}
-                        </div>
-                        <div className="int-status"><div className="int-wave"><span></span><span></span><span></span><span></span><span></span></div>AI ready</div>
-                      </div>
-                      
-                      <span className="int-tag">{meta.label.toUpperCase()}</span>
-                      <h2>{template.name}</h2>
-                      <p>{template.description}</p>
-                      
-                      <div className="int-meta">
-                        <div><span className="int-val">{meta.duration}</span><span className="int-lab">Duration</span></div>
-                        <div><span className="int-val">{meta.format}</span><span className="int-lab">Format</span></div>
-                        <div><span className="int-val">{meta.focus}</span><span className="int-lab">Focus</span></div>
-                      </div>
-                      
-                      <button className="int-btn">Start interview <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
-                    </InterviewCard>
-                  );
-                })}
+                {/* 2. System Design */}
+                <div 
+                  className="compact-int-card"
+                  onClick={() => onNavigate('pre-join', { targetPage: 'system-design-interview', templateId: 'system_design', templateName: 'System Design' })}
+                >
+                  <div className="cic-head">
+                    <div className="cic-icon-box">
+                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="5" r="2.5"/><circle cx="5" cy="19" r="2.5"/><circle cx="19" cy="19" r="2.5"/><line x1="12" y1="7.5" x2="12" y2="12"/><line x1="12" y1="12" x2="6.5" y2="17"/><line x1="12" y1="12" x2="17.5" y2="17"/></svg>
+                    </div>
+                    <div className="cic-pills">
+                      <span className="cic-pill">Whiteboard</span>
+                      <span className="cic-pill cic-duration">60 min</span>
+                    </div>
+                  </div>
+                  <h3 className="cic-title">System Design</h3>
+                  <p className="cic-desc">Architect scalable systems and discuss trade-offs with an interactive diagramming canvas.</p>
+                  <div className="cic-footer">
+                    <span className="cic-action-text">Start Interview</span>
+                    <ArrowRight size={14} className="cic-arrow" />
+                  </div>
+                </div>
+
+                {/* 3. Behavioral & STAR */}
+                <div 
+                  className="compact-int-card"
+                  onClick={() => onNavigate('pre-join', { targetPage: 'general-interview', templateId: 'behavioral', templateName: 'Behavioral & HR' })}
+                >
+                  <div className="cic-head">
+                    <div className="cic-icon-box">
+                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    </div>
+                    <div className="cic-pills">
+                      <span className="cic-pill">Voice</span>
+                      <span className="cic-pill cic-duration">35 min</span>
+                    </div>
+                  </div>
+                  <h3 className="cic-title">Behavioral &amp; HR</h3>
+                  <p className="cic-desc">Practice STAR method responses and cultural fit questions with realistic follow-ups.</p>
+                  <div className="cic-footer">
+                    <span className="cic-action-text">Start Interview</span>
+                    <ArrowRight size={14} className="cic-arrow" />
+                  </div>
+                </div>
+
+                {/* 4. Product Management */}
+                <div 
+                  className="compact-int-card"
+                  onClick={() => onNavigate('pre-join', { targetPage: 'general-interview', templateId: 'product_management', templateName: 'Product Management' })}
+                >
+                  <div className="cic-head">
+                    <div className="cic-icon-box">
+                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                    </div>
+                    <div className="cic-pills">
+                      <span className="cic-pill">Voice</span>
+                      <span className="cic-pill cic-duration">45 min</span>
+                    </div>
+                  </div>
+                  <h3 className="cic-title">Product Management</h3>
+                  <p className="cic-desc">Practice product strategy, user segmentation, and north-star metric scenarios.</p>
+                  <div className="cic-footer">
+                    <span className="cic-action-text">Start Interview</span>
+                    <ArrowRight size={14} className="cic-arrow" />
+                  </div>
+                </div>
+
+                {/* 5. AI & Machine Learning */}
+                <div 
+                  className="compact-int-card"
+                  onClick={() => onNavigate('pre-join', { targetPage: 'general-interview', templateId: 'aiml', templateName: 'AI & Machine Learning' })}
+                >
+                  <div className="cic-head">
+                    <div className="cic-icon-box">
+                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/></svg>
+                    </div>
+                    <div className="cic-pills">
+                      <span className="cic-pill">Voice + Code</span>
+                      <span className="cic-pill cic-duration">45 min</span>
+                    </div>
+                  </div>
+                  <h3 className="cic-title">AI &amp; Machine Learning</h3>
+                  <p className="cic-desc">Discuss model architecture, RAG pipelines, training optimizations, and ML infra.</p>
+                  <div className="cic-footer">
+                    <span className="cic-action-text">Start Interview</span>
+                    <ArrowRight size={14} className="cic-arrow" />
+                  </div>
+                </div>
+
+                {/* 6. Discussion */}
+                <div 
+                  className="compact-int-card"
+                  onClick={() => onNavigate('discussion')}
+                >
+                  <div className="cic-head">
+                    <div className="cic-icon-box">
+                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a8 8 0 1 1-3.5-6.6"/><path d="M21 4v5h-5"/></svg>
+                    </div>
+                    <div className="cic-pills">
+                      <span className="cic-pill">Slides</span>
+                      <span className="cic-pill cic-duration">Flexible</span>
+                    </div>
+                  </div>
+                  <h3 className="cic-title">Discussion &amp; Decks</h3>
+                  <p className="cic-desc">Present technical slide decks, thesis defenses, or architecture review sessions.</p>
+                  <div className="cic-footer">
+                    <span className="cic-action-text">Start Interview</span>
+                    <ArrowRight size={14} className="cic-arrow" />
+                  </div>
+                </div>
               </div>
 
               {/* Past Sessions Logs */}
@@ -855,7 +951,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, user, onLogout
                   {pastInterviews.length === 0 ? (
                      <div className="past-session-empty">
                        <Sparkle size={20} />
-                       <span>No past interviews found.</span>
+                       <span>No past interviews found. Complete a mock round to view scorecards here.</span>
                      </div>
                   ) : (
                     pastInterviews.map((interview) => (

@@ -181,7 +181,7 @@ function translateEvent(data: any): StreamEvent {
     case "tool_end":
     case "tool.result": {
       const toolId = data.id ?? data.tool_id ?? data.toolId ?? "";
-      const toolName = data.tool ?? data.name ?? "";
+      const toolName = typeof data.tool === "object" ? (data.tool?.title ?? data.name ?? "") : (data.tool ?? data.name ?? "");
       const failed = data.status === "error" || data.status === "failed";
       const endTime = data.time ? data.time * 1000 : Date.now();
       return {

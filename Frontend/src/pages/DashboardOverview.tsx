@@ -30,10 +30,21 @@ ChartJS.register(
 interface DashboardOverviewProps {
   user: any;
   langgraphProfile?: any;
-  onNavigate: (section: string, params?: any) => void;
+  onNavigate?: (section: string, params?: any) => void;
+  onSelectSection?: (section: string) => void;
 }
 
-export function DashboardOverview({ user, langgraphProfile, onNavigate }: DashboardOverviewProps) {
+export function DashboardOverview({ user, langgraphProfile, onNavigate, onSelectSection }: DashboardOverviewProps) {
+  const handleNav = (target: string, params?: any) => {
+    if (params) {
+      onNavigate?.(target, params);
+    } else if (onSelectSection && ['home', 'chat', 'practice', 'interview', 'schedules', 'progress'].includes(target)) {
+      onSelectSection(target);
+    } else {
+      onNavigate?.(target, params);
+    }
+  };
+
   const [isDemoEmpty, setIsDemoEmpty] = useState(false);
   
   // Count-up stats
@@ -446,7 +457,7 @@ export function DashboardOverview({ user, langgraphProfile, onNavigate }: Dashbo
               <div className="overview-empty-inline">
                 <i className="ti ti-chart-line"></i>
                 <p>Complete your first interview to see score trends here.</p>
-                <button className="overview-empty-cta" onClick={() => onNavigate('interview')}>Start an interview</button>
+                <button className="overview-empty-cta" onClick={() => handleNav('interview')}>Start an interview</button>
               </div>
             )}
           </section>
@@ -526,7 +537,7 @@ export function DashboardOverview({ user, langgraphProfile, onNavigate }: Dashbo
                 }
                 
                 return (
-                  <div key={rm.id || i} className="overview-roadmap-item" style={{cursor: 'pointer'}} onClick={() => onNavigate('schedules')}>
+                  <div key={rm.id || i} className="overview-roadmap-item" style={{cursor: 'pointer'}} onClick={() => handleNav('schedules')}>
                     <div className="overview-rm-top"><h4>{rm.title}</h4><span className="overview-rm-pct">{pct}%</span></div>
                     <p className="overview-rm-desc">{nextUp}</p>
                     <div className="overview-bar-track"><DelayedFill width={pct} delay={300 + i * 120} /></div>
@@ -536,7 +547,7 @@ export function DashboardOverview({ user, langgraphProfile, onNavigate }: Dashbo
                  <div className="overview-lb-empty">
                    <i className="ti ti-map-2"></i>
                    <p>Create a study roadmap to track your progress.</p>
-                   <button className="overview-empty-cta" onClick={() => onNavigate('schedules')}>Create roadmap</button>
+                   <button className="overview-empty-cta" onClick={() => handleNav('schedules')}>Create roadmap</button>
                  </div>
               )}
             </div>
@@ -556,7 +567,7 @@ export function DashboardOverview({ user, langgraphProfile, onNavigate }: Dashbo
                 const qTitle = sub.question_title || 'Unknown Problem';
                 
                 return (
-                  <div key={i} className="overview-prob-row" style={{cursor: 'pointer'}} onClick={() => onNavigate('practice', { questionId: sub.question_id })}>
+                  <div key={i} className="overview-prob-row" style={{cursor: 'pointer'}} onClick={() => handleNav('practice', { questionId: sub.question_id })}>
                     <div className={`overview-prob-status ${isAccepted ? 'solved' : 'pending'}`}>
                       <i className={`ti ${isAccepted ? 'ti-check' : 'ti-x'}`}></i>
                     </div>
@@ -573,7 +584,7 @@ export function DashboardOverview({ user, langgraphProfile, onNavigate }: Dashbo
                 <div className="overview-lb-empty">
                   <i className="ti ti-code"></i>
                   <p>Solve a DSA problem to see your submissions here.</p>
-                  <button className="overview-empty-cta" onClick={() => onNavigate('practice')}>Go to practice</button>
+                  <button className="overview-empty-cta" onClick={() => handleNav('practice')}>Go to practice</button>
                 </div>
               )}
             </div>
@@ -657,7 +668,7 @@ export function DashboardOverview({ user, langgraphProfile, onNavigate }: Dashbo
                 <>
                   <h4>{hasAnyData ? `Focus on ${weakest.name.toLowerCase()}` : 'Start your journey'}</h4>
                   <p>{hasAnyData ? `Your ${weakest.name.toLowerCase()} average is ${weakest.score}/100 — your weakest area right now.` : 'Take your first interview to get personalized recommendations!'}</p>
-                  <button className="overview-nudge-btn" onClick={() => onNavigate(hasAnyData ? 'interview' : 'interview')}>
+                  <button className="overview-nudge-btn" onClick={() => handleNav(hasAnyData ? 'interview' : 'interview')}>
                     {hasAnyData ? `Practice ${weakest.name.toLowerCase()}` : 'Start an interview'} <i className="ti ti-arrow-right"></i>
                   </button>
                 </>

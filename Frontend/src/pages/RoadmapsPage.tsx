@@ -16,6 +16,7 @@ interface RoadmapsPageProps {
 }
 
 export const RoadmapsPage: React.FC<RoadmapsPageProps> = ({ onNavigate }) => {
+  const isAuthenticated = !!localStorage.getItem('access_token');
   const roadmaps = [
     {
       title: 'Frontend Engineer',
@@ -62,7 +63,7 @@ export const RoadmapsPage: React.FC<RoadmapsPageProps> = ({ onNavigate }) => {
             and get a personalized day-by-day roadmap that adapts to your weaknesses as you practice.
           </p>
           <div className="about-hero-actions">
-            <button className="ta-btn-primary ta-btn" onClick={() => onNavigate('signup')}>
+            <button className="ta-btn-primary ta-btn" onClick={() => onNavigate(isAuthenticated ? 'dashboard' : 'signup')}>
               Generate my roadmap <ArrowRight size={16} />
             </button>
             <button className="ta-btn" onClick={() => onNavigate('practice')}>
@@ -97,7 +98,7 @@ export const RoadmapsPage: React.FC<RoadmapsPageProps> = ({ onNavigate }) => {
                   <div className="ta-roadmap-meta">
                     <span className="ta-meta-item"><Lightning size={14} weight="bold" /> {r.duration}</span>
                   </div>
-                  <button className="ta-roadmap-btn" onClick={() => onNavigate('signup')}>
+                  <button className="ta-roadmap-btn" onClick={() => onNavigate(isAuthenticated ? 'dashboard' : 'signup')}>
                     Start Track <ArrowRight size={14} weight="bold" className="ta-btn-arrow" />
                   </button>
                 </div>
@@ -120,7 +121,7 @@ export const RoadmapsPage: React.FC<RoadmapsPageProps> = ({ onNavigate }) => {
             </div>
           </div>
           <div className="about-cta-actions">
-            <button className="ta-btn-primary ta-btn" onClick={() => onNavigate('signup')}>
+            <button className="ta-btn-primary ta-btn" onClick={() => onNavigate(isAuthenticated ? 'dashboard' : 'signup')}>
               Start tracking <ArrowRight size={16} />
             </button>
           </div>

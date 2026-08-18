@@ -1,0 +1,352 @@
+name: thinkaloud-backend-prod
+
+x-common-env: &common-env
+  DD_AGENT_HOST: datadog-agent
+  DD_TRACE_AGENT_PORT: "8126"
+  DD_DOGSTATSD_PORT: "8125"
+  DD_ENV: ${DD_ENV:-production}
+  DD_VERSION: ${APP_VERSION:-latest}
+  DD_TRACE_ENABLED: ${DD_TRACE_ENABLED:-true}
+  DD_LOGS_INJECTION: ${DD_LOGS_INJECTION:-true}
+
+x-service-defaults: &service-defaults
+  init: true
+  networks:
+    - thinkaloud-net
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+
+services:
+  # ---------------------------------------------------------------------------
+  # 1. Reverse Proxy & Automated SSL (Let's Encrypt / ZeroSSL)
+  # ---------------------------------------------------------------------------
+  caddy:
+    image: caddy:alpine
+    container_name: thinkaloud-caddy
+    ports:
+      - "${PUBLIC_HTTP_PORT:-80}:80"
+      - "${PUBLIC_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      user-service:
+        condition: service_healthy
+      main-service:
+        condition: service_healthy
+      ai-interviewer-api:
+        condition: service_healthy
+    networks:
+      - thinkaloud-net
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+
+  # ---------------------------------------------------------------------------
+  # 2. Redis In-Memory Cache, Chat Buffer, and Real-Time Pub/Sub
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: thinkaloud-redis
+    command: ["redis-server", "--appendonly", "yes", "--loglevel", "warning"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - thinkaloud-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+
+  # ---------------------------------------------------------------------------
+  # 3. RabbitMQ Message Broker (Durable Event Bus & Async Execution)
+  # ---------------------------------------------------------------------------
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: thinkaloud-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-guest}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - thinkaloud-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: 768M
+
+  # ---------------------------------------------------------------------------
+  # 4. Datadog Observability & APM Agent
+  # ---------------------------------------------------------------------------
+  datadog-agent:
+    image: gcr.io/datadoghq/agent:7
+    container_name: thinkaloud-datadog-agent
+    environment:
+      DD_API_KEY: ${DD_API_KEY:-dev_dummy_key}
+      DD_SITE: ${DD_SITE:-datadoghq.com}
+      DD_ENV: ${DD_ENV:-production}
+      DD_APM_ENABLED: "true"
+      DD_APM_NON_LOCAL_TRAFFIC: "true"
+      DD_DOGSTATSD_NON_LOCAL_TRAFFIC: "true"
+      DD_LOGS_ENABLED: "true"
+      DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL: "true"
+      DD_CONTAINER_EXCLUDE_LOGS: name:thinkaloud-datadog-agent
+      DD_PROCESS_AGENT_ENABLED: "true"
+      DD_DOCKER_LABELS_AS_TAGS: '{"com.thinkaloud.service":"service"}'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc/:/host/proc/:ro
+      - /sys/fs/cgroup/:/host/sys/fs/cgroup:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    networks:
+      - thinkaloud-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+
+  # ---------------------------------------------------------------------------
+  # 5. Scalable User Service (Auth, JWT, Profiles, Achievements)
+  # ---------------------------------------------------------------------------
+  user-service:
+    <<: *service-defaults
+    build:
+      context: ./Scalable_User_Service
+    container_name: thinkaloud-user-service
+    entrypoint: ["docker/start.sh"]
+    env_file:
+      - .env
+    environment:
+      <<: *common-env
+      DD_SERVICE: user-service
+      DATABASE_URL: ${USER_SERVICE_DATABASE_URL:-${DATABASE_URL}}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+    depends_on:
+      redis:
+        condition: service_healthy
+      datadog-agent:
+        condition: service_started
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3).read()"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    labels:
+      com.thinkaloud.service: user-service
+      com.datadoghq.tags.service: user-service
+      com.datadoghq.tags.env: ${DD_ENV:-production}
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 512M
+
+  # ---------------------------------------------------------------------------
+  # 6. Main Service (DSA Execution, Chat Agent, Roadmaps, Dashboard)
+  # ---------------------------------------------------------------------------
+  main-service:
+    <<: *service-defaults
+    build:
+      context: ./main_service
+    container_name: thinkaloud-main-service
+    env_file:
+      - .env
+    environment:
+      <<: *common-env
+      DD_SERVICE: main-service
+      DATABASE_URL: ${MAIN_SERVICE_DATABASE_URL:-${DATABASE_URL}}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/1}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      USER_SERVICE_URL: http://user-service:8000
+    depends_on:
+      user-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      datadog-agent:
+        condition: service_started
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/', timeout=3).read()"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    labels:
+      com.thinkaloud.service: main-service
+      com.datadoghq.tags.service: main-service
+      com.datadoghq.tags.env: ${DD_ENV:-production}
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 768M
+
+  # ---------------------------------------------------------------------------
+  # 7. AI Interviewer API (Token Generation, Interviews, Leaderboard)
+  # ---------------------------------------------------------------------------
+  ai-interviewer-api:
+    <<: *service-defaults
+    build:
+      context: ./AI_Interviewer
+      target: api
+    container_name: thinkaloud-ai-interviewer-api
+    env_file:
+      - .env
+    environment:
+      <<: *common-env
+      DD_SERVICE: ai-interviewer-api
+      DATABASE_URL: ${INTERVIEWER_SERVICE_DATABASE_URL:-${DATABASE_URL}}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/2}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      USER_SERVICE_URL: http://user-service:8000
+      MAIN_SERVICE_URL: http://main-service:8001
+    depends_on:
+      user-service:
+        condition: service_healthy
+      main-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      datadog-agent:
+        condition: service_started
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/interview-types', timeout=3).read()"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    labels:
+      com.thinkaloud.service: ai-interviewer-api
+      com.datadoghq.tags.service: ai-interviewer-api
+      com.datadoghq.tags.env: ${DD_ENV:-production}
+    deploy:
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: 512M
+
+  # ---------------------------------------------------------------------------
+  # 8. AI Interviewer Voice Worker (LiveKit WebRTC Agent, VAD, STT/TTS)
+  # ---------------------------------------------------------------------------
+  ai-interviewer-worker:
+    <<: *service-defaults
+    build:
+      context: ./AI_Interviewer
+      target: worker
+    container_name: thinkaloud-ai-interviewer-worker
+    env_file:
+      - .env
+    environment:
+      <<: *common-env
+      DD_SERVICE: ai-interviewer-worker
+      DATABASE_URL: ${INTERVIEWER_SERVICE_DATABASE_URL:-${DATABASE_URL}}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/2}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      USER_SERVICE_URL: http://user-service:8000
+      MAIN_SERVICE_URL: http://main-service:8001
+    depends_on:
+      ai-interviewer-api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      datadog-agent:
+        condition: service_started
+    labels:
+      com.thinkaloud.service: ai-interviewer-worker
+      com.datadoghq.tags.service: ai-interviewer-worker
+      com.datadoghq.tags.env: ${DD_ENV:-production}
+    deploy:
+      resources:
+        limits:
+          cpus: "1.50"
+          memory: 1536M
+
+  # ---------------------------------------------------------------------------
+  # 9. AI Interviewer Post-Interview Analysis Worker (LLM Judge)
+  # ---------------------------------------------------------------------------
+  ai-interviewer-analysis-worker:
+    <<: *service-defaults
+    build:
+      context: ./AI_Interviewer
+      target: analysis_worker
+    container_name: thinkaloud-ai-interviewer-analysis-worker
+    env_file:
+      - .env
+    environment:
+      <<: *common-env
+      DD_SERVICE: ai-interviewer-analysis-worker
+      DATABASE_URL: ${INTERVIEWER_SERVICE_DATABASE_URL:-${DATABASE_URL}}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/2}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      MAIN_SERVICE_URL: http://main-service:8001
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      datadog-agent:
+        condition: service_started
+    labels:
+      com.thinkaloud.service: ai-interviewer-analysis-worker
+      com.datadoghq.tags.service: ai-interviewer-analysis-worker
+      com.datadoghq.tags.env: ${DD_ENV:-production}
+    deploy:
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: 512M
+
+networks:
+  thinkaloud-net:
+    name: thinkaloud-backend-net
+    driver: bridge
+
+volumes:
+  redis_data:
+  rabbitmq_data:
+  caddy_data:
+  caddy_config:

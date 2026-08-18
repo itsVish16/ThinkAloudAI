@@ -256,7 +256,13 @@ class DSAService:
     async def get_session_submissions(session_id: str, db: AsyncSession) -> List[CodeSubmission]:
         result = await db.execute(
             select(CodeSubmission)
-            .filter(CodeSubmission.session_id == session_id, CodeSubmission.is_submission == True)
+            .filter(
+                or_(
+                    CodeSubmission.session_id == session_id,
+                    CodeSubmission.session_id.ilike(session_id)
+                ),
+                CodeSubmission.is_submission == True
+            )
             .order_by(CodeSubmission.created_at.desc())
         )
         return result.scalars().all()
@@ -265,9 +271,14 @@ class DSAService:
     async def get_question_submissions(question_id: int, session_id: str, db: AsyncSession) -> List[CodeSubmission]:
         result = await db.execute(
             select(CodeSubmission)
-            .filter(CodeSubmission.question_id == question_id)
-            .filter(CodeSubmission.session_id == session_id)
-            .filter(CodeSubmission.is_submission == True)
+            .filter(
+                CodeSubmission.question_id == question_id,
+                or_(
+                    CodeSubmission.session_id == session_id,
+                    CodeSubmission.session_id.ilike(session_id)
+                ),
+                CodeSubmission.is_submission == True
+            )
             .order_by(CodeSubmission.created_at.desc())
         )
         return result.scalars().all()

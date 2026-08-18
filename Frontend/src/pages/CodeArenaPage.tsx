@@ -6,6 +6,7 @@ interface CodeArenaPageProps {
 }
 
 export const CodeArenaPage: React.FC<CodeArenaPageProps> = ({ onNavigate }) => {
+  const isAuthenticated = !!localStorage.getItem('access_token');
   return (
     <div className="ta-page-container">
       <div className="ta-ambient-bg"></div>
@@ -19,7 +20,7 @@ export const CodeArenaPage: React.FC<CodeArenaPageProps> = ({ onNavigate }) => {
         <div className="bento-card" style={{padding: '4rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#0B0F17', border: '1px solid #1C2333'}}>
           <h2 style={{color: '#fff', fontSize: '24px', marginBottom: '1rem'}}>Ready to dive in?</h2>
           <p className="text-body" style={{marginBottom: '2rem'}}>Create a free account to access the full problem library and start tracking your progress.</p>
-          <button className="ta-btn-primary ta-btn" onClick={() => onNavigate('signup')} style={{padding: '12px 24px'}}>Browse Problems</button>
+          <button className="ta-btn-primary ta-btn" onClick={() => onNavigate(isAuthenticated ? 'practice' : 'signup')} style={{padding: '12px 24px'}}>Browse Problems</button>
         </div>
       </div>
     </div>

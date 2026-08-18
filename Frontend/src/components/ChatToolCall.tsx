@@ -15,8 +15,6 @@ interface ChatToolCallProps {
 }
 
 export const ChatToolCall: React.FC<ChatToolCallProps> = ({ toolCall, isTyping }) => {
-  // Hide internal tool calling details per user request
-  return null;
   const isRunning = toolCall.status === 'running';
   const isError = toolCall.status === 'error';
   const [isOpen, setIsOpen] = useState(isRunning);
