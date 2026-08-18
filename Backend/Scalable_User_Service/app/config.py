@@ -1,6 +1,7 @@
+import os
 from functools import cached_property
 from os import cpu_count
-
+from pydantic import Field, AliasChoices
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -34,13 +35,13 @@ class Settings(BaseSettings):
     max_login_attempts: int = 5
     login_lockout_seconds: int = 900
 
-    # Cap concurrent bcrypt operations per worker process.
-    # Default = CPU count. Prevents threadpool stampede when many logins hit simultaneously.
-    # With 4 workers on 8 cores: each worker gets 2 concurrent hashes max (8 total).
     bcrypt_concurrency: int = cpu_count() or 4
 
+    JWT_SECRET_KEY: str = Field(
+        default="dev-secret-key-change-me",
+        validation_alias=AliasChoices("JWT_SECRET_KEY", "SECRET_KEY", "jwt_secret_key", "secret_key")
+    )
     SECRET_KEY: str | None = None
-    JWT_SECRET_KEY: str = "dev-secret-key-change-me"
     algorithm: str = "HS256"
     jwt_issuer: str = "scalable-user-service"
     access_token_expire_minutes: int = 30
@@ -49,6 +50,10 @@ class Settings(BaseSettings):
     def model_post_init(self, __context) -> None:
         if self.SECRET_KEY and self.JWT_SECRET_KEY == "dev-secret-key-change-me":
             self.JWT_SECRET_KEY = self.SECRET_KEY
+        if self.JWT_SECRET_KEY == "dev-secret-key-change-me":
+            env_secret = os.environ.get("JWT_SECRET_KEY") or os.environ.get("SECRET_KEY")
+            if env_secret:
+                self.JWT_SECRET_KEY = env_secret
 
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
