@@ -55,10 +55,17 @@ class Settings(BaseSettings):
             if env_secret:
                 self.JWT_SECRET_KEY = env_secret
         if not self.resend_api_key:
-            env_resend = os.environ.get("RESEND_API_KEY") or os.environ.get("resend_api_key") or os.environ.get("RESEND_KEY")
+            env_resend = (
+                os.environ.get("RESEND_API_KEY")
+                or os.environ.get("resend_api_key")
+                or os.environ.get("RESEND_KEY")
+                or os.environ.get("RESEND_TOKEN")
+            )
             if env_resend:
                 self.resend_api_key = env_resend
-        if self.resend_api_key and self.resend_api_key.strip():
+        self.resend_api_key = self.resend_api_key.strip().strip("'\"")
+        self.email_from = self.email_from.strip().strip("'\"")
+        if self.resend_api_key:
             self.email_delivery_enabled = True
 
     aws_access_key_id: str = ""
