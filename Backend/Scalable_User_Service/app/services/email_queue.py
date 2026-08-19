@@ -14,24 +14,24 @@ EMAIL_QUEUE_KEY = "user:email_queue"
 
 async def enqueue_email(task_type: str, email: str, payload: dict) -> None:
     """
-    Enqueues an email sending job into Redis queue, with immediate local processing fallback.
+    Enqueues and processes an email sending job immediately with Redis fallback.
     """
+    logger.info("dispatching_email_task", task_type=task_type, email=email)
     try:
-        redis: Redis = await get_redis()
-        task = {
-            "type": task_type,
-            "email": email,
-            "payload": payload,
-        }
-        await redis.rpush(EMAIL_QUEUE_KEY, json.dumps(task))
-        logger.info("email_task_enqueued", task_type=task_type, email=email)
-    except Exception as e:
-        logger.warning("redis_enqueue_failed_processing_directly", error=str(e), task_type=task_type, email=email)
-        # Direct execution fallback
+        await process_email(task_type, email, payload)
+    except Exception as err:
+        logger.error("direct_email_send_error", error=str(err), task_type=task_type, email=email)
         try:
-            await process_email(task_type, email, payload)
-        except Exception as direct_err:
-            logger.error("direct_email_processing_failed", error=str(direct_err), task_type=task_type, email=email)
+            redis: Redis = await get_redis()
+            task = {
+                "type": task_type,
+                "email": email,
+                "payload": payload,
+            }
+            await redis.rpush(EMAIL_QUEUE_KEY, json.dumps(task))
+            logger.info("email_task_requeued_to_redis", task_type=task_type, email=email)
+        except Exception as queue_err:
+            logger.error("redis_requeue_failed", error=str(queue_err), task_type=task_type, email=email)
 
 
 async def email_worker_loop(stop_event: asyncio.Event) -> None:

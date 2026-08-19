@@ -333,8 +333,10 @@ async def send_email_via_resend(to_email: str, subject: str, html_content: str) 
     """
     Sends an email using Resend's REST API asynchronously via httpx.
     """
-    api_key = settings.resend_api_key.strip() if settings.resend_api_key else ""
-    from_email = settings.email_from or "ThinkAloudAI <onboarding@resend.dev>"
+    api_key = settings.resend_api_key.strip().strip("'\"") if settings.resend_api_key else ""
+    from_email = settings.email_from.strip().strip("'\"") if settings.email_from else "ThinkAloudAI <onboarding@resend.dev>"
+    if "example.com" in from_email:
+        from_email = "ThinkAloudAI <onboarding@resend.dev>"
 
     if not api_key:
         logger.warning(
