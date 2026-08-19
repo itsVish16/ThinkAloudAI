@@ -32,6 +32,15 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("FIREWORKS_MODEL", "fireworks_model")
     )
 
+    JWT_SECRET_KEY: str = Field(
+        default="dev-secret-key-change-me",
+        validation_alias=AliasChoices("JWT_SECRET_KEY", "SECRET_KEY", "jwt_secret_key", "secret_key")
+    )
+    JWT_ALGORITHM: str = Field(
+        default="HS256",
+        validation_alias=AliasChoices("JWT_ALGORITHM", "algorithm", "jwt_algorithm")
+    )
+
     def model_post_init(self, __context) -> None:
         if not self.FIREWORKS_API_KEY:
             self.FIREWORKS_API_KEY = (
@@ -40,9 +49,19 @@ class Settings(BaseSettings):
                 or ""
             )
         self.FIREWORKS_API_KEY = self.FIREWORKS_API_KEY.strip().strip("'\"")
-    DATABASE_URL: str = "postgresql+asyncpg://thinkaloud:thinkaloud_dev@localhost:5432/main_service"
-    JWT_SECRET_KEY: str = "dev-secret-key-change-me"
-    JWT_ALGORITHM: str = "HS256"
+
+        if not self.JWT_SECRET_KEY or self.JWT_SECRET_KEY == "dev-secret-key-change-me":
+            env_secret = (
+                os.environ.get("JWT_SECRET_KEY")
+                or os.environ.get("SECRET_KEY")
+                or os.environ.get("jwt_secret_key")
+                or os.environ.get("secret_key")
+            )
+            if env_secret:
+                self.JWT_SECRET_KEY = env_secret
+        if not self.JWT_SECRET_KEY:
+            self.JWT_SECRET_KEY = "dev-secret-key-change-me"
+        self.JWT_SECRET_KEY = self.JWT_SECRET_KEY.strip().strip("'\"")
     E2B_API_KEY: str = ""
     OPIK_API_KEY: str = ""
     OPIK_WORKSPACE: str = "default"

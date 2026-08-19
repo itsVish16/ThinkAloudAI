@@ -19,8 +19,9 @@ def verify_jwt(credentials: Optional[HTTPAuthorizationCredentials] = Depends(sec
             headers={"WWW-Authenticate": "Bearer"},
         )
     token = credentials.credentials
+    secret_key = settings.JWT_SECRET_KEY or "dev-secret-key-change-me"
     try:
-        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        payload = jwt.decode(token, secret_key, algorithms=[settings.JWT_ALGORITHM or "HS256"])
         payload["raw_token"] = token
         return payload
     except jwt.ExpiredSignatureError:
@@ -29,7 +30,7 @@ def verify_jwt(credentials: Optional[HTTPAuthorizationCredentials] = Depends(sec
             detail="Token has expired",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    except jwt.InvalidTokenError:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication credentials",
