@@ -38,9 +38,10 @@ export const Header: React.FC<HeaderProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const adminEmails = (import.meta.env.VITE_ADMIN_EMAILS || 'vishal@thinkaloud.ai,vishalsaini160204@gmail.com,vishal@example.com')
+  const adminEmails = (import.meta.env.VITE_ADMIN_EMAILS || '')
     .split(',')
-    .map((e: string) => e.trim().toLowerCase());
+    .map((e: string) => e.trim().toLowerCase())
+    .filter(Boolean);
 
   const isAdmin = Boolean(
     (user?.role && user.role.toLowerCase() === 'admin') ||
