@@ -41,28 +41,6 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("JWT_ALGORITHM", "algorithm", "jwt_algorithm")
     )
 
-    def model_post_init(self, __context) -> None:
-        if not self.FIREWORKS_API_KEY:
-            self.FIREWORKS_API_KEY = (
-                os.environ.get("FIREWORKS_API_KEY")
-                or os.environ.get("OPENAI_API_KEY")
-                or ""
-            )
-        self.FIREWORKS_API_KEY = self.FIREWORKS_API_KEY.strip().strip("'\"")
-
-        if not self.JWT_SECRET_KEY or self.JWT_SECRET_KEY == "dev-secret-key-change-me":
-            env_secret = (
-                os.environ.get("JWT_SECRET_KEY")
-                or os.environ.get("SECRET_KEY")
-                or os.environ.get("jwt_secret_key")
-                or os.environ.get("secret_key")
-            )
-            if env_secret:
-                self.JWT_SECRET_KEY = env_secret
-        if not self.JWT_SECRET_KEY:
-            self.JWT_SECRET_KEY = "dev-secret-key-change-me"
-        self.JWT_SECRET_KEY = self.JWT_SECRET_KEY.strip().strip("'\"")
-
     DATABASE_URL: str = Field(
         default="postgresql+asyncpg://thinkaloud:thinkaloud_dev@localhost:5432/main_service",
         validation_alias=AliasChoices("DATABASE_URL", "MAIN_SERVICE_DATABASE_URL", "database_url")
@@ -86,6 +64,28 @@ class Settings(BaseSettings):
     CORS_ALLOWED_ORIGINS: str = (
         "https://thinkaloudai.tech,https://www.thinkaloudai.tech,http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000"
     )
+
+    def model_post_init(self, __context) -> None:
+        if not self.FIREWORKS_API_KEY:
+            self.FIREWORKS_API_KEY = (
+                os.environ.get("FIREWORKS_API_KEY")
+                or os.environ.get("OPENAI_API_KEY")
+                or ""
+            )
+        self.FIREWORKS_API_KEY = self.FIREWORKS_API_KEY.strip().strip("'\"")
+
+        if not self.JWT_SECRET_KEY or self.JWT_SECRET_KEY == "dev-secret-key-change-me":
+            env_secret = (
+                os.environ.get("JWT_SECRET_KEY")
+                or os.environ.get("SECRET_KEY")
+                or os.environ.get("jwt_secret_key")
+                or os.environ.get("secret_key")
+            )
+            if env_secret:
+                self.JWT_SECRET_KEY = env_secret
+        if not self.JWT_SECRET_KEY:
+            self.JWT_SECRET_KEY = "dev-secret-key-change-me"
+        self.JWT_SECRET_KEY = self.JWT_SECRET_KEY.strip().strip("'\"")
 
     @property
     def cors_allowed_origins_list(self) -> list[str]:
