@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     SPEECHMATICS_API_KEY: str = ""
     USER_SERVICE_URL: str = "http://localhost:8000"
     TAVILY_API_KEY: str = ""
-    ADMIN_EMAILS: str = "vishal@example.com,vishal@thinkaloud.ai,vishalsaini160204@gmail.com"
+    ADMIN_EMAILS: str = ""
     CORS_ALLOWED_ORIGINS: str = (
         "https://thinkaloudai.tech,https://www.thinkaloudai.tech,http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000"
     )

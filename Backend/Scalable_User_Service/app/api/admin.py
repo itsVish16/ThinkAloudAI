@@ -14,9 +14,10 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
-    admin_emails = os.getenv("ADMIN_EMAILS", "vishal@example.com,vishal@thinkaloud.ai,vishalsaini160204@gmail.com")
+    admin_emails = os.getenv("ADMIN_EMAILS", "")
     email = current_user.get("email", "")
-    if not email or email.lower() not in [e.strip().lower() for e in admin_emails.split(",") if e.strip()]:
+    allowed = [e.strip().lower() for e in admin_emails.split(",") if e.strip()]
+    if not email or not allowed or email.lower() not in allowed:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",

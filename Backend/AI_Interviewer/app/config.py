@@ -71,8 +71,7 @@ class Config(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/2"
     RABBITMQ_URL: str = "amqp://guest:guest@localhost:5672/"
 
-    # Admin & Observability
-    ADMIN_EMAILS: str = "vishal@example.com,vishal@thinkaloud.ai,vishalsaini160204@gmail.com"
+    ADMIN_EMAILS: str = ""
     OPIK_API_KEY: Optional[str] = None
     OPIK_WORKSPACE: str = "default"
     OPIK_PROJECT_NAME: str = "ThinkAloud.ai"

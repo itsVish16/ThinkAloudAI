@@ -215,9 +215,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, user, onLogout
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const userDropdownRef = useRef<HTMLDivElement>(null);
 
-  const adminEmails = (import.meta.env.VITE_ADMIN_EMAILS || 'vishal@thinkaloud.ai,vishalsaini160204@gmail.com,vishal@example.com')
+  const adminEmails = (import.meta.env.VITE_ADMIN_EMAILS || '')
     .split(',')
-    .map((e: string) => e.trim().toLowerCase());
+    .map((e: string) => e.trim().toLowerCase())
+    .filter(Boolean);
 
   const isAdmin = Boolean(
     (user?.role && user.role.toLowerCase() === 'admin') ||

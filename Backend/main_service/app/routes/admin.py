@@ -32,10 +32,9 @@ async def require_admin(payload: dict = Depends(verify_jwt), db: AsyncSession = 
         except Exception:
             pass
 
-    email = email or "unknown@domain.com"
-    admin_emails = os.getenv("ADMIN_EMAILS", "vishal@example.com,vishal@thinkaloud.ai,vishalsaini160204@gmail.com")
-    
-    if not admin_emails or email.lower() not in [e.strip().lower() for e in admin_emails.split(",") if e.strip()]:
+    admin_emails = os.getenv("ADMIN_EMAILS", settings.ADMIN_EMAILS)
+    allowed = [e.strip().lower() for e in admin_emails.split(",") if e.strip()]
+    if not allowed or not email or email.lower() not in allowed:
         raise HTTPException(status_code=403, detail="Not authorized. Admin access required.")
         
     return payload

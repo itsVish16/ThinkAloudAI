@@ -38,12 +38,13 @@ async def require_admin(
         except Exception as e:
             logger.error(f"Failed to fetch user email from user-service: {e}")
 
-    admin_emails = os.getenv("ADMIN_EMAILS", "vishal@example.com,vishal@thinkaloud.ai,vishalsaini160204@gmail.com") # fallback for local
+    admin_emails = os.getenv("ADMIN_EMAILS", settings.ADMIN_EMAILS)
     
     if not email:
         raise HTTPException(status_code=403, detail="Not authorized. No email found.")
     
-    if not admin_emails or email.lower() not in [e.strip().lower() for e in admin_emails.split(",") if e.strip()]:
+    allowed = [e.strip().lower() for e in admin_emails.split(",") if e.strip()]
+    if not allowed or email.lower() not in allowed:
         raise HTTPException(status_code=403, detail="Not authorized. Admin access required.")
         
     return current_user
