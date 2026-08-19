@@ -230,6 +230,14 @@ services:
       RABBITMQ_URL: ${RABBITMQ_URL:-amqp://${RABBITMQ_DEFAULT_USER:-thinkaloud}:${RABBITMQ_DEFAULT_PASS:-thinkaloud_rabbit_secret}@rabbitmq:5672/}
       USER_SERVICE_URL: http://user-service:8000
       UVICORN_WORKERS: "2"
+      FIREWORKS_API_KEY: ${FIREWORKS_API_KEY:-}
+      FIREWORKS_BASE_URL: ${FIREWORKS_BASE_URL:-https://api.fireworks.ai/inference/v1}
+      FIREWORKS_MODEL: ${FIREWORKS_MODEL:-accounts/fireworks/routers/glm-5p2-fast}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      E2B_API_KEY: ${E2B_API_KEY:-}
+      OPIK_API_KEY: ${OPIK_API_KEY:-}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -279,6 +287,11 @@ services:
       USER_SERVICE_URL: http://user-service:8000
       UVICORN_WORKERS: "2"
       MAIN_SERVICE_URL: http://main-service:8001
+      LIVEKIT_URL: ${LIVEKIT_URL:-}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-}
+      OPIK_API_KEY: ${OPIK_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -330,6 +343,13 @@ services:
       USER_SERVICE_URL: http://user-service:8000
       UVICORN_WORKERS: "2"
       MAIN_SERVICE_URL: http://main-service:8001
+      LIVEKIT_URL: ${LIVEKIT_URL:-}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+      SARVAM_API_KEY: ${SARVAM_API_KEY:-}
+      FAST_LLM_API_KEY: ${FAST_LLM_API_KEY:-}
+      MAIN_LLM_API_KEY: ${MAIN_LLM_API_KEY:-}
+      OPIK_API_KEY: ${OPIK_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -369,6 +389,10 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/2}
       RABBITMQ_URL: ${RABBITMQ_URL:-amqp://${RABBITMQ_DEFAULT_USER:-thinkaloud}:${RABBITMQ_DEFAULT_PASS:-thinkaloud_rabbit_secret}@rabbitmq:5672/}
       MAIN_SERVICE_URL: http://main-service:8001
+      SARVAM_API_KEY: ${SARVAM_API_KEY:-}
+      ANALYSIS_LLM_API_KEY: ${ANALYSIS_LLM_API_KEY:-}
+      FIREWORKS_API_KEY: ${FIREWORKS_API_KEY:-}
+      OPIK_API_KEY: ${OPIK_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
