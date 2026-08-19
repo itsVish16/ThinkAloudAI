@@ -34,7 +34,9 @@ http://localhost, api.thinkaloudai.tech {
 
     # Main Service routes
     handle /chat* {
-        reverse_proxy main-service:8001
+        reverse_proxy main-service:8001 {
+            flush_interval -1
+        }
     }
     handle /dsa* {
         reverse_proxy main-service:8001
