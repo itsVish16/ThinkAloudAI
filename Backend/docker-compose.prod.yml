@@ -183,6 +183,10 @@ services:
       DD_SERVICE: user-service
       DATABASE_URL: ${USER_SERVICE_DATABASE_URL:-postgresql+asyncpg://${POSTGRES_USER:-thinkaloud}:${POSTGRES_PASSWORD:-thinkaloud_prod_secure}@postgres:5432/user_service}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-ThinkAloudAI <onboarding@resend.dev>}
+      EMAIL_DELIVERY_ENABLED: ${EMAIL_DELIVERY_ENABLED:-true}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-https://thinkaloudai.tech}
     depends_on:
       postgres:
         condition: service_healthy

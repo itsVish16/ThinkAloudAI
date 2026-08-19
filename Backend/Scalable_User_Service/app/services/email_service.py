@@ -334,11 +334,11 @@ async def send_email_via_resend(to_email: str, subject: str, html_content: str) 
     Sends an email using Resend's REST API asynchronously via httpx.
     """
     api_key = settings.resend_api_key.strip() if settings.resend_api_key else ""
-    from_email = settings.email_from or "onboarding@resend.dev"
+    from_email = settings.email_from or "ThinkAloudAI <onboarding@resend.dev>"
 
-    if not settings.email_delivery_enabled or not api_key:
-        logger.info(
-            "email_delivery_simulated",
+    if not api_key:
+        logger.warning(
+            "resend_api_key_missing_simulating_email",
             to_email=to_email,
             subject=subject,
             delivery_enabled=settings.email_delivery_enabled,
@@ -358,12 +358,20 @@ async def send_email_via_resend(to_email: str, subject: str, html_content: str) 
     }
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(
                 "https://api.resend.com/emails",
                 json=payload,
                 headers=headers,
             )
+            if response.status_code >= 400:
+                logger.error(
+                    "resend_api_error_response",
+                    status_code=response.status_code,
+                    body=response.text,
+                    to_email=to_email,
+                    from_email=from_email,
+                )
             response.raise_for_status()
             data = response.json()
             logger.info("email_sent_successfully", message_id=data.get("id"), to=to_email, subject=subject)
