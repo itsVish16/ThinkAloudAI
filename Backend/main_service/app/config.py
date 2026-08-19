@@ -62,12 +62,23 @@ class Settings(BaseSettings):
         if not self.JWT_SECRET_KEY:
             self.JWT_SECRET_KEY = "dev-secret-key-change-me"
         self.JWT_SECRET_KEY = self.JWT_SECRET_KEY.strip().strip("'\"")
+
+    DATABASE_URL: str = Field(
+        default="postgresql+asyncpg://thinkaloud:thinkaloud_dev@localhost:5432/main_service",
+        validation_alias=AliasChoices("DATABASE_URL", "MAIN_SERVICE_DATABASE_URL", "database_url")
+    )
+    REDIS_URL: str = Field(
+        default="redis://localhost:6379/1",
+        validation_alias=AliasChoices("REDIS_URL", "redis_url")
+    )
+    RABBITMQ_URL: str = Field(
+        default="amqp://guest:guest@localhost:5672/",
+        validation_alias=AliasChoices("RABBITMQ_URL", "rabbitmq_url")
+    )
     E2B_API_KEY: str = ""
     OPIK_API_KEY: str = ""
     OPIK_WORKSPACE: str = "default"
     OPIK_PROJECT_NAME: str = "ThinkAloud.ai"
-    REDIS_URL: str = "redis://localhost:6379/1"
-    RABBITMQ_URL: str = "amqp://guest:guest@localhost:5672/"
     SPEECHMATICS_API_KEY: str = ""
     USER_SERVICE_URL: str = "http://localhost:8000"
     TAVILY_API_KEY: str = ""
