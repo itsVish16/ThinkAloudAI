@@ -31,8 +31,8 @@ export interface CodeSubmitResponse {
 import { API_BASE_URL } from '../config/api';
 const API_URL = API_BASE_URL;
 
-export async function getDSAQuestions(): Promise<APIDSAQuestion[]> {
-  const response = await apiClient.fetchWithAuth(`${API_URL}/dsa/questions`);
+export async function getDSAQuestions(limit: number = 100): Promise<APIDSAQuestion[]> {
+  const response = await apiClient.fetchWithAuth(`${API_URL}/dsa/questions?limit=${limit}`);
   if (!response.ok) {
     throw new Error('Failed to fetch DSA questions');
   }
