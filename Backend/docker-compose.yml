@@ -80,7 +80,7 @@ services:
     entrypoint:
     - docker/start.sh
     env_file:
-      - ./Scalable_User_Service/.env
+      - .env
     ports:
     - ${APP_BIND_ADDRESS:-127.0.0.1}:${USER_SERVICE_PORT:-8000}:8000
     depends_on:
@@ -113,7 +113,7 @@ services:
       context: ./main_service
     container_name: thinkaloud-main-service
     env_file:
-      - ./main_service/.env
+      - .env
     ports:
     - ${APP_BIND_ADDRESS:-127.0.0.1}:${MAIN_SERVICE_PORT:-8001}:8001
     depends_on:
@@ -151,7 +151,7 @@ services:
       target: api
     container_name: thinkaloud-ai-interviewer-api
     env_file:
-      - ./AI_Interviewer/.env
+      - .env
     environment:
       DD_SERVICE: ai-interviewer-api
     ports:
@@ -193,7 +193,7 @@ services:
       target: worker
     container_name: thinkaloud-ai-interviewer-worker
     env_file:
-      - ./AI_Interviewer/.env
+      - .env
     environment:
       DD_SERVICE: ai-interviewer-worker
     depends_on:
@@ -280,7 +280,7 @@ services:
       target: analysis_worker
     container_name: thinkaloud-ai-interviewer-analysis-worker
     env_file:
-      - ./AI_Interviewer/.env
+      - .env
     environment:
       DD_SERVICE: ai-interviewer-analysis-worker
     depends_on:
