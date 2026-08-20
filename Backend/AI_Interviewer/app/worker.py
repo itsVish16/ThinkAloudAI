@@ -41,6 +41,34 @@ async def queue_generator(queue: asyncio.Queue, metrics_tracker: Any = None):
             first_token = False
         yield token
 
+
+def serialize_state_safely(state: dict) -> dict:
+    import json
+    clean_state = {}
+    for k, v in state.items():
+        if k in ("stream_queue", "current_turn_metrics"):
+            continue
+        try:
+            json.dumps(v)
+            clean_state[k] = v
+        except (TypeError, OverflowError):
+            if hasattr(v, "model_dump"):
+                clean_state[k] = v.model_dump()
+            elif isinstance(v, list):
+                clean_list = []
+                for item in v:
+                    if hasattr(item, "model_dump"):
+                        clean_list.append(item.model_dump())
+                    elif isinstance(item, dict):
+                        clean_list.append(item)
+                    else:
+                        clean_list.append(str(item))
+                clean_state[k] = clean_list
+            else:
+                clean_state[k] = str(v)
+    return clean_state
+
+
 class InterviewAgent(Agent):
     def __init__(self, room, room_id: str, candidate_name: str, user_id: str, interview_type: str, ai_selected_questions: list = None, session_data: dict = None):
         super().__init__(
@@ -144,10 +172,8 @@ class InterviewAgent(Agent):
                     # Notify frontend that the problem should be revealed
                     payload = json.dumps({"type": "reveal_problem"})
                     await self.room.local_participant.publish_data(payload.encode("utf-8"))
-                
-                # Prepare state copy without the non-serializable queue for Postgres persistence
-                state_to_save = self.state.copy()
-                state_to_save.pop("stream_queue", None)
+                # Prepare state copy with robust serialization for Postgres persistence
+                state_to_save = serialize_state_safely(self.state)
 
                 await save_interview_session(
                     session_id=self.room_id,
@@ -168,6 +194,14 @@ class InterviewAgent(Agent):
         self._analysis_published = True
         logger.info("Initiating self-termination sequence...")
         
+        # Notify frontend via DataChannel that interview has officially completed
+        try:
+            if self.room and self.room.local_participant:
+                payload = json.dumps({"type": "interview_completed", "sessionId": self.room_id})
+                await self.room.local_participant.publish_data(payload.encode("utf-8"))
+        except Exception as e:
+            logger.warning(f"Could not publish interview_completed DataChannel: {e}")
+
         # Trigger Background Analysis via RabbitMQ
         from app.services.rabbitmq import publish_analysis_task
         payload = {
@@ -244,9 +278,7 @@ class InterviewAgent(Agent):
                 self.state = updated_state
 
             # Persist state after each turn to ensure transcript is never lost
-            state_to_save = self.state.copy()
-            state_to_save.pop("stream_queue", None)
-            state_to_save.pop("current_turn_metrics", None)
+            state_to_save = serialize_state_safely(self.state)
             asyncio.create_task(save_interview_session(
                 session_id=self.room_id,
                 user_id=self.user_id,

@@ -284,45 +284,29 @@ async def stream_dual_llm(
     # Launch Deep Reasoning LLM in the background
     main_task = asyncio.create_task(_run_main_llm())
 
-    # For intro, agenda, and wrap up turns, let Main LLM deliver the full rich persona speech
+    clean_bridge = ""
     skip_fast_bridge = bool(stage and (stage.startswith("intro_") or stage == "wrap_up"))
-
-    if skip_fast_bridge:
-        is_direct, clean_bridge = False, ""
-    else:
-        # Execute Fast Responder LLM
-        is_direct, clean_bridge, _ = await call_fast_bridge(messages, opik_trace_id, metrics=metrics)
+    if not skip_fast_bridge and getattr(settings, "DUAL_LLM_ENABLED", True):
+        _, clean_bridge, _ = await call_fast_bridge(messages, opik_trace_id, metrics=metrics)
 
     spoken_tokens: List[str] = []
 
+    if clean_bridge:
+        logger.info(f"⚡ [Dual-LLM] Injecting Fast Bridge: '{clean_bridge}'")
+        bridge_payload = clean_bridge + " "
+        if stream_queue:
+            await stream_queue.put(bridge_payload)
+        spoken_tokens.append(bridge_payload)
+
     try:
-        if is_direct and clean_bridge:
-            # Case 1: Purely conversational / confirmation turn
-            logger.info(f"⚡ [Dual-LLM] Direct short-circuit response: '{clean_bridge}'")
+        # Seamlessly stream tokens from Main LLM into audio queue
+        while True:
+            token = await main_buffer.get()
+            if token is None:
+                break
             if stream_queue:
-                await stream_queue.put(clean_bridge + " ")
-            spoken_tokens.append(clean_bridge)
-
-            # Cancel background main reasoning task to conserve compute & tokens
-            if not main_task.done():
-                main_task.cancel()
-        else:
-            # Case 2: Deep technical turn with bridge
-            if clean_bridge:
-                logger.info(f"⚡ [Dual-LLM] Injecting Fast Bridge: '{clean_bridge}'")
-                bridge_payload = clean_bridge + " "
-                if stream_queue:
-                    await stream_queue.put(bridge_payload)
-                spoken_tokens.append(bridge_payload)
-
-            # Seamlessly stitch the tokens from Main LLM as they become available
-            while True:
-                token = await main_buffer.get()
-                if token is None:
-                    break
-                if stream_queue:
-                    await stream_queue.put(token)
-                spoken_tokens.append(token)
+                await stream_queue.put(token)
+            spoken_tokens.append(token)
 
     finally:
         if stream_queue:

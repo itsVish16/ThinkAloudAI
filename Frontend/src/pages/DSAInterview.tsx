@@ -28,7 +28,7 @@ interface DSAInterviewProps {
   role?: string;
 }
 
-const IDESync = ({ code, consoleOutput, onNextQuestion, onRevealProblem }: { code: string, consoleOutput: any, onNextQuestion: (targetIdx?: number) => void, onRevealProblem: () => void }) => {
+const IDESync = ({ code, consoleOutput, onNextQuestion, onRevealProblem, onInterviewCompleted }: { code: string, consoleOutput: any, onNextQuestion: (targetIdx?: number) => void, onRevealProblem: () => void, onInterviewCompleted: () => void }) => {
   const room = useRoomContext();
   const { localParticipant } = useLocalParticipant();
 
@@ -56,6 +56,8 @@ const IDESync = ({ code, consoleOutput, onNextQuestion, onRevealProblem }: { cod
           onNextQuestion(typeof msg.question_index === 'number' ? msg.question_index : undefined);
         } else if (msg.type === "reveal_problem") {
           onRevealProblem();
+        } else if (msg.type === "interview_completed") {
+          onInterviewCompleted();
         }
       } catch (e) { }
     };
@@ -63,7 +65,7 @@ const IDESync = ({ code, consoleOutput, onNextQuestion, onRevealProblem }: { cod
     return () => {
       room.off(RoomEvent.DataReceived, handleData);
     };
-  }, [room, onNextQuestion, onRevealProblem]);
+  }, [room, onNextQuestion, onRevealProblem, onInterviewCompleted]);
 
   return null;
 };
@@ -375,7 +377,13 @@ export const DSAInterview: React.FC<DSAInterviewProps> = ({ questionId, template
                   style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '0.5rem' }}
                 >
                   <RoomAudioRenderer />
-                  <IDESync code={code} consoleOutput={consoleOutput} onNextQuestion={handleNextQuestion} onRevealProblem={() => setIsProblemRevealed(true)} />
+                  <IDESync 
+                    code={code} 
+                    consoleOutput={consoleOutput} 
+                    onNextQuestion={handleNextQuestion} 
+                    onRevealProblem={() => setIsProblemRevealed(true)} 
+                    onInterviewCompleted={() => onNavigate('analysis', { sessionId: roomName })}
+                  />
                   {/* YOU VIDEO */}
                   <div style={{ position: 'relative', background: '#111', borderRadius: '8px', overflow: 'hidden', flex: '0 0 auto', aspectRatio: '16/9' }}>
                     <div style={{ position: 'absolute', top: 8, left: 8, background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.75rem', zIndex: 10, display: 'flex', alignItems: 'center', gap: '4px', color: '#fff' }}>

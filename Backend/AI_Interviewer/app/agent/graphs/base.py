@@ -198,11 +198,12 @@ async def generate_response(state: InterviewState) -> Dict[str, Any]:
         q_title = active_q.get("title", "")
         q_desc = active_q.get("description", "")
         q_diff = active_q.get("difficulty", "")
-        formatted_q = f"Title: {q_title}"
+        formatted_q = f"ACTIVE PROBLEM TITLE: {q_title}"
         if q_diff:
             formatted_q += f" (Difficulty: {q_diff})"
         if q_desc:
             formatted_q += f"\nDescription:\n{q_desc}"
+        formatted_q += f"\n\nCRITICAL INSTRUCTION: The candidate is looking at the problem '{q_title}' on their screen. You MUST discuss and refer to '{q_title}'. NEVER introduce, describe, or make up any other problem."
     elif active_q:
         formatted_q = str(active_q)
     else:
