@@ -22,7 +22,7 @@ export const PreJoinInterview: React.FC<PreJoinInterviewProps> = ({
   const [domain, setDomain] = useState('Backend');
   const [role, setRole] = useState('Software Engineer');
   
-  const userName = user?.full_name?.split(' ')[0] || user?.username || 'Guest';
+  const userName = user?.full_name?.split(' ')[0] || user?.username || 'Candidate';
 
   return (
     <div className="prejoin-page">
@@ -113,9 +113,11 @@ export const PreJoinInterview: React.FC<PreJoinInterviewProps> = ({
               }}
               onError={(err) => console.log('PreJoin Error', err)}
               defaults={{
+                username: userName,
                 audioEnabled: true,
                 videoEnabled: true,
               }}
+              joinLabel="Join Interview"
             />
           </div>
 
