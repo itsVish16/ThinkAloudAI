@@ -324,6 +324,7 @@ async def entrypoint(ctx: agents.JobContext):
             "model": settings.SARVAM_STT_MODEL,
             "language": settings.SARVAM_STT_LANGUAGE,
             "mode": "transcribe",
+            "prompt": "",
         }
         if settings.SARVAM_STT_URL:
             stt_kwargs["base_url"] = settings.SARVAM_STT_URL
