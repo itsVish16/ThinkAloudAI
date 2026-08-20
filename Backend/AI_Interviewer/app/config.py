@@ -41,10 +41,14 @@ class Config(BaseSettings):
     MAIN_LLM_MODEL: str = "gemma4"
     MAIN_LLM_BASE_URL: str = "https://api.sarvam.ai/v1"
 
-    # Separate model for background post-interview analysis (latency not critical)
+    # Fireworks AI / DeepSeek for Background Post-Interview Analysis & Grading
+    FIREWORKS_API_KEY: str = ""
+    FIREWORKS_BASE_URL: str = "https://api.fireworks.ai/inference/v1"
+    FIREWORKS_MODEL: str = "accounts/fireworks/models/deepseek-v3"
+
     ANALYSIS_LLM_API_KEY: str = ""
-    ANALYSIS_LLM_MODEL: str = ""
-    ANALYSIS_LLM_BASE_URL: str = ""
+    ANALYSIS_LLM_MODEL: str = "accounts/fireworks/models/deepseek-v3"
+    ANALYSIS_LLM_BASE_URL: str = "https://api.fireworks.ai/inference/v1"
 
     # Legacy fallback LLM Settings (OpenAI-compatible)
     LLM_API_KEY: str = ""
@@ -98,15 +102,15 @@ class Config(BaseSettings):
 
     @property
     def analysis_llm_key(self) -> str:
-        return self.ANALYSIS_LLM_API_KEY or self.main_llm_key
+        return self.ANALYSIS_LLM_API_KEY or self.FIREWORKS_API_KEY or self.SARVAM_API_KEY or self.main_llm_key
 
     @property
     def analysis_llm_url(self) -> str:
-        return self.ANALYSIS_LLM_BASE_URL or self.main_llm_url
+        return self.ANALYSIS_LLM_BASE_URL or self.FIREWORKS_BASE_URL or self.SARVAM_BASE_URL
 
     @property
     def analysis_llm_model(self) -> str:
-        return self.ANALYSIS_LLM_MODEL or self.MAIN_LLM_MODEL
+        return self.ANALYSIS_LLM_MODEL or self.FIREWORKS_MODEL or "accounts/fireworks/models/deepseek-v3"
 
     @property
     def cors_allowed_origins_list(self) -> List[str]:
