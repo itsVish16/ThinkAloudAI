@@ -206,6 +206,25 @@ class DSAService:
             await pubsub.subscribe(f"submission_updates_{submission_id}")
 
             try:
+                async with SessionLocal() as db:
+                    result = await db.execute(select(CodeSubmission).filter(CodeSubmission.id == submission_id))
+                    sub = result.scalars().first()
+                    if sub and sub.status != "Pending":
+                        final_data = json.dumps({
+                            "status": sub.status,
+                            "error_message": sub.error_message,
+                            "execution_time_ms": sub.execution_time_ms,
+                            "passed_tests": sub.passed_tests,
+                            "total_tests": sub.total_tests
+                        })
+                        yield f"event: result\ndata: {final_data}\n\n"
+                        await pubsub.unsubscribe()
+                        await redis_client.close()
+                        return
+            except Exception:
+                pass
+
+            try:
                 yield "event: connected\ndata: connected\n\n"
                 start_time = time.time()
                 last_poll = start_time

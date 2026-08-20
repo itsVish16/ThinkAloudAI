@@ -211,11 +211,15 @@ async def analyze_and_save_interview(session_id: str, user_id: str, candidate_na
             raw_response = await call_analysis_llm(eval_messages, system_prompt, opik_trace_id=opik_trace_id)
             
             # Resilient JSON extraction
-            json_match = re.search(r'\{.*\}', raw_response.replace('\n', ' '), re.DOTALL)
-            if json_match:
-                raw_response = json_match.group(0)
-                
-            data = json.loads(raw_response)
+            cleaned = raw_response.strip()
+            if "```" in cleaned:
+                cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.MULTILINE)
+                cleaned = re.sub(r"\s*```$", "", cleaned, flags=re.MULTILINE).strip()
+            start_idx = cleaned.find("{")
+            end_idx = cleaned.rfind("}")
+            if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                cleaned = cleaned[start_idx : end_idx + 1]
+            data = json.loads(cleaned)
             break # Success, exit retry loop
             
         except json.JSONDecodeError as e:

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.auth import verify_jwt
+from app.config import settings
 from app.models.dsa import CodeSubmission, DSAQuestion
 from app.models.roadmap import Roadmap
 

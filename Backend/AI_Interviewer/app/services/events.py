@@ -100,9 +100,10 @@ async def publish_interview_completed(
 
     # Update Leaderboard in Redis (Track highest score per candidate)
     try:
-        current_lb_score = await redis_client.zscore("global_leaderboard", candidate_name)
+        member = f"{user_id}:{candidate_name}"
+        current_lb_score = await redis_client.zscore("global_leaderboard", member)
         if current_lb_score is None or overall_score > float(current_lb_score):
-            await redis_client.zadd("global_leaderboard", {candidate_name: overall_score})
+            await redis_client.zadd("global_leaderboard", {member: overall_score})
     except Exception as lb_err:
         logger.error(f"Failed to update leaderboard: {lb_err}")
 

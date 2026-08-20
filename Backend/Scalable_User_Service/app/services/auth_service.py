@@ -75,10 +75,21 @@ class AuthService:
                 )
             else:
                 if existing_username and existing_username.id != existing_email.id:
-                    raise HTTPException(
-                        status_code=status.HTTP_409_CONFLICT,
-                        detail="Username is already taken",
-                    )
+                    if not existing_username.is_verified and existing_username.created_at:
+                        age = (datetime.now(UTC).replace(tzinfo=None) - existing_username.created_at.replace(tzinfo=None)).total_seconds()
+                        if age > 86400:
+                            await db.delete(existing_username)
+                            await db.flush()
+                        else:
+                            raise HTTPException(
+                                status_code=status.HTTP_409_CONFLICT,
+                                detail="Username is already taken",
+                            )
+                    else:
+                        raise HTTPException(
+                            status_code=status.HTTP_409_CONFLICT,
+                            detail="Username is already taken",
+                        )
 
                 password_hash = await hash_password(payload.password)
                 existing_email.username = payload.username
@@ -96,10 +107,21 @@ class AuthService:
                 user = existing_email
         else:
             if existing_username is not None:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Username is already taken",
-                )
+                if not existing_username.is_verified and existing_username.created_at:
+                    age = (datetime.now(UTC).replace(tzinfo=None) - existing_username.created_at.replace(tzinfo=None)).total_seconds()
+                    if age > 86400:
+                        await db.delete(existing_username)
+                        await db.flush()
+                    else:
+                        raise HTTPException(
+                            status_code=status.HTTP_409_CONFLICT,
+                            detail="Username is already taken",
+                        )
+                else:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="Username is already taken",
+                    )
 
             password_hash = await hash_password(payload.password)
             try:
@@ -286,6 +308,14 @@ class AuthService:
         db: AsyncSession,
         redis: Redis,
     ) -> dict:
+        attempts_key = f"user:otp_attempts:{payload.email}"
+        attempts = int(await redis.get(attempts_key) or 0)
+        if attempts >= 5:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many failed OTP attempts. Please request a new OTP after 15 minutes.",
+            )
+
         user = await get_user_by_email(db, str(payload.email))
         if user is None:
             raise HTTPException(
@@ -295,10 +325,22 @@ class AuthService:
 
         stored_token = await get_password_reset_token(redis, str(payload.email))
         if stored_token is None or not hmac.compare_digest(stored_token, payload.otp):
+            new_attempts = await redis.incr(attempts_key)
+            if new_attempts == 1:
+                await redis.expire(attempts_key, 900)
+            if new_attempts >= 5:
+                await delete_password_reset_token(redis, str(payload.email))
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail="Too many failed OTP attempts. Please request a new OTP after 15 minutes.",
+                )
+
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid or expired reset token",
             )
+        
+        await redis.delete(attempts_key)
 
         password_hash = await hash_password(payload.new_password)
         await update_user_password(db, user, password_hash)
@@ -314,6 +356,14 @@ class AuthService:
         db: AsyncSession,
         redis: Redis,
     ) -> dict:
+        attempts_key = f"user:otp_attempts:{payload.email}"
+        attempts = int(await redis.get(attempts_key) or 0)
+        if attempts >= 5:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many failed OTP attempts. Please request a new OTP after 15 minutes.",
+            )
+
         user = await get_user_by_email(db, str(payload.email))
         if user is None:
             raise HTTPException(
@@ -323,10 +373,22 @@ class AuthService:
 
         stored_token = await get_email_verification_token(redis, str(payload.email))
         if stored_token is None or not hmac.compare_digest(stored_token, payload.token):
+            new_attempts = await redis.incr(attempts_key)
+            if new_attempts == 1:
+                await redis.expire(attempts_key, 900)
+            if new_attempts >= 5:
+                await delete_email_verification_token(redis, str(payload.email))
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail="Too many failed OTP attempts. Please request a new OTP after 15 minutes.",
+                )
+
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid or expired verification token",
             )
+        
+        await redis.delete(attempts_key)
 
         await mark_user_verified(db, user)
         await redis.publish("user_events", f"user.verified:{user.id}")

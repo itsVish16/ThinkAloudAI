@@ -25,16 +25,20 @@ async def get_leaderboard(current_user: dict = Depends(get_current_user)):
     top_users = await redis_client.zrevrange("global_leaderboard", 0, 9, withscores=True)
     
     leaderboard = []
-    for i, (name, score) in enumerate(top_users):
+    for i, (member, score) in enumerate(top_users):
+        parts = member.split(":", 1)
+        c_name = parts[1] if len(parts) > 1 else member
         leaderboard.append({
             "rank": i + 1,
-            "candidate_name": name,
+            "candidate_name": c_name,
             "score": int(score)
         })
         
     username = current_user.get("username", "Candidate")
-    user_rank = await redis_client.zrevrank("global_leaderboard", username)
-    user_score = await redis_client.zscore("global_leaderboard", username)
+    user_id = current_user.get("user_id", "guest_user")
+    member = f"{user_id}:{username}"
+    user_rank = await redis_client.zrevrank("global_leaderboard", member)
+    user_score = await redis_client.zscore("global_leaderboard", member)
     
     my_rank = {
         "rank": user_rank + 1 if user_rank is not None else None,

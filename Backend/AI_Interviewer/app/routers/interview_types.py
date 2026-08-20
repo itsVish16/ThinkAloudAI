@@ -117,41 +117,51 @@ async def get_token(
         
     ai_selected_questions = []
     try:
-        if payload.interview_type == "dsa":
-            response = await http_client.get(f"{settings.MAIN_SERVICE_URL}/dsa/questions")
-            if response.status_code == 200:
-                dsa_pool = response.json()
-                if payload.question_ids:
-                    ai_selected_questions = [q for q in dsa_pool if str(q.get("id")) in payload.question_ids]
-                else:
-                    ai_selected_questions = random.sample(dsa_pool, min(2, len(dsa_pool)))
-        elif payload.interview_type == "system_design":
-            url = f"{settings.MAIN_SERVICE_URL}/system-design/questions"
-            query_params = {}
-            if payload.domain:
-                query_params["domain"] = payload.domain
-            if payload.role:
-                query_params["role"] = payload.role
-            
-            response = await http_client.get(url, params=query_params)
-            if response.status_code == 200:
-                sd_pool = response.json()
-                if payload.question_ids:
-                    ai_selected_questions = [q for q in sd_pool if str(q.get("id")) in payload.question_ids or q.get("id") in payload.question_ids]
-                else:
-                    ai_selected_questions = random.sample(sd_pool, min(1, len(sd_pool)))
-        elif payload.interview_type in ["behavioral", "hr"]:
-            response = await http_client.get(f"{settings.MAIN_SERVICE_URL}/behavioral/questions?limit=2")
-            if response.status_code == 200:
-                ai_selected_questions = response.json()
-        elif payload.interview_type in ["product_management", "pm"]:
-            response = await http_client.get(f"{settings.MAIN_SERVICE_URL}/pm/questions?limit=2")
-            if response.status_code == 200:
-                ai_selected_questions = response.json()
-        elif payload.interview_type in ["ai_ml", "ml-engineer-infra", "agentic-ai-engineer"]:
-            response = await http_client.get(f"{settings.MAIN_SERVICE_URL}/aiml/questions?limit=2")
-            if response.status_code == 200:
-                ai_selected_questions = response.json()
+        import httpx
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            if payload.interview_type == "dsa":
+                response = await client.get(f"{settings.MAIN_SERVICE_URL}/dsa/questions")
+                if response.status_code == 200:
+                    dsa_pool = response.json()
+                    if isinstance(dsa_pool, list):
+                        if payload.question_ids:
+                            ai_selected_questions = [q for q in dsa_pool if str(q.get("id")) in payload.question_ids]
+                        else:
+                            ai_selected_questions = random.sample(dsa_pool, min(2, len(dsa_pool)))
+            elif payload.interview_type == "system_design":
+                url = f"{settings.MAIN_SERVICE_URL}/system-design/questions"
+                query_params = {}
+                if payload.domain:
+                    query_params["domain"] = payload.domain
+                if payload.role:
+                    query_params["role"] = payload.role
+                
+                response = await client.get(url, params=query_params)
+                if response.status_code == 200:
+                    sd_pool = response.json()
+                    if isinstance(sd_pool, list):
+                        if payload.question_ids:
+                            ai_selected_questions = [q for q in sd_pool if str(q.get("id")) in payload.question_ids or q.get("id") in payload.question_ids]
+                        else:
+                            ai_selected_questions = random.sample(sd_pool, min(1, len(sd_pool)))
+            elif payload.interview_type in ["behavioral", "hr"]:
+                response = await client.get(f"{settings.MAIN_SERVICE_URL}/behavioral/questions?limit=2")
+                if response.status_code == 200:
+                    data = response.json()
+                    if isinstance(data, list):
+                        ai_selected_questions = data
+            elif payload.interview_type in ["product_management", "pm"]:
+                response = await client.get(f"{settings.MAIN_SERVICE_URL}/pm/questions?limit=2")
+                if response.status_code == 200:
+                    data = response.json()
+                    if isinstance(data, list):
+                        ai_selected_questions = data
+            elif payload.interview_type in ["ai_ml", "ml-engineer-infra", "agentic-ai-engineer"]:
+                response = await client.get(f"{settings.MAIN_SERVICE_URL}/aiml/questions?limit=2")
+                if response.status_code == 200:
+                    data = response.json()
+                    if isinstance(data, list):
+                        ai_selected_questions = data
     except Exception as e:
         # Non-blocking question fetching
         pass
