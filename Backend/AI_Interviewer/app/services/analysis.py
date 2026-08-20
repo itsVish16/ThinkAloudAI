@@ -14,9 +14,15 @@ logger = logging.getLogger("analysis_service")
 def format_transcript(messages: list) -> str:
     transcript = ""
     for msg in messages:
-        if msg["role"] == "system": continue
-        role = "Interviewer" if msg["role"] == "assistant" else "Candidate"
-        transcript += f"{role}: {msg['content']}\n\n"
+        if msg.get("role") == "system": continue
+        role = "Interviewer" if msg.get("role") == "assistant" else "Candidate"
+        content = msg.get("content", "")
+        # Clean out internal observation or system prompt tags
+        content = re.sub(r"\[Candidate Visual Observation:.*?\]\s*", "", content)
+        content = re.sub(r"\[Candidate Whiteboard Observation:.*?\]\s*", "", content)
+        content = re.sub(r"\[SYSTEM:.*?\]\s*", "", content)
+        if content.strip():
+            transcript += f"{role}: {content.strip()}\n\n"
     return transcript
 
 def extract_speaking_analytics(messages: list) -> dict:
@@ -25,14 +31,18 @@ def extract_speaking_analytics(messages: list) -> dict:
     filler_counts = {"umm": 0, "like": 0, "basically": 0}
     
     for msg in messages:
-        if msg["role"] == "system": continue
+        if msg.get("role") == "system": continue
+        content = msg.get("content", "")
+        content = re.sub(r"\[Candidate Visual Observation:.*?\]\s*", "", content)
+        content = re.sub(r"\[Candidate Whiteboard Observation:.*?\]\s*", "", content)
+        content = re.sub(r"\[SYSTEM:.*?\]\s*", "", content)
         
-        words = msg["content"].split()
-        if msg["role"] == "assistant":
+        words = content.split()
+        if msg.get("role") == "assistant":
             ai_words += len(words)
         else:
             candidate_words += len(words)
-            text_lower = msg["content"].lower()
+            text_lower = content.lower()
             filler_counts["umm"] += len(re.findall(r'\bumm+\b', text_lower))
             filler_counts["like"] += len(re.findall(r'\blike\b', text_lower))
             filler_counts["basically"] += len(re.findall(r'\bbasically\b', text_lower))
@@ -166,10 +176,9 @@ async def analyze_and_save_interview(session_id: str, user_id: str, candidate_na
     
     # Check transcript quality
     speaking_analytics = extract_speaking_analytics(messages)
-    candidate_words = speaking_analytics.get("candidate_percentage", 0) * (len(transcript.split()) / 100.0)
     
-    if len(messages) < 6 or candidate_words < 30:
-        logger.warning(f"Transcript for {session_id} is too short or candidate spoke too little. Skipping deep analysis.")
+    if len(messages) < 3:
+        logger.warning(f"Transcript for {session_id} has less than 3 messages. Skipping deep analysis.")
         try:
             async with AsyncSessionLocal() as db:
                 feedback = InterviewFeedback(
@@ -177,13 +186,13 @@ async def analyze_and_save_interview(session_id: str, user_id: str, candidate_na
                     technical_score=0,
                     communication_score=0,
                     english_score=0,
-                    strengths=json.dumps(["Not enough data"]),
-                    weaknesses=json.dumps(["Not enough data"]),
-                    improvement_plan=json.dumps(["Complete a full interview session"]),
+                    strengths=json.dumps(["Not enough conversation data"]),
+                    weaknesses=json.dumps(["Session disconnected immediately"]),
+                    improvement_plan=json.dumps(["Complete a full interview session to receive scores"]),
                     recommended_topics=[],
                     detailed_metrics={
                         "hiring_decision": "Reject",
-                        "executive_summary": "The interview ended too early or the candidate did not speak enough to perform a meaningful evaluation.",
+                        "executive_summary": "The interview session was ended immediately without sufficient conversation.",
                         "speaking_analytics": speaking_analytics
                     }
                 )

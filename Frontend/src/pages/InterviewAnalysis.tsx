@@ -377,33 +377,34 @@ export function InterviewAnalysis({ sessionId, onNavigate }: InterviewAnalysisPr
         {/* TRANSCRIPT */}
         {transcript && transcript.length > 0 && (
           <div className="ta-rise" style={{ animationDelay: '.38s' }}>
-            <div className="ta-sec-head"><h2>Interview Transcript</h2><span>{Math.floor(transcript.length / 2)} turns</span></div>
+            <div className="ta-sec-head"><h2>Interview Transcript</h2><span>{transcript.length} turns</span></div>
             
-            {transcript.reduce((acc: any[], msg: any, idx: number, arr: any[]) => {
-              if (msg.role === 'assistant' || msg.role === 'ai') {
-                const nextUser = arr[idx+1]?.role === 'user' ? arr[idx+1] : null;
-                acc.push(
-                  <details className="ta-qa" open={idx === 0} key={idx}>
-                    <summary>
-                      <div className="ta-q-left">
-                        <span className="ta-qnum">AI</span>
-                        {msg.content.length > 60 ? msg.content.substring(0, 60) + '...' : msg.content}
-                      </div>
-                      <svg className="ta-chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
-                    </summary>
-                    <div className="ta-qa-body">
-                      <b>Interviewer:</b> {msg.content}
-                      {nextUser && (
-                        <div className="ta-fb">
-                          <b>You:</b> {nextUser.content}
-                        </div>
-                      )}
+            <div className="ta-transcript-timeline" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1rem' }}>
+              {transcript.map((msg: any, idx: number) => {
+                const isAI = msg.role === 'assistant' || msg.role === 'ai';
+                return (
+                  <div 
+                    key={idx} 
+                    className="ta-qa"
+                    style={{
+                      background: isAI ? 'rgba(255,122,41,0.05)' : 'rgba(255,255,255,0.03)',
+                      border: isAI ? '1px solid rgba(255,122,41,0.2)' : '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: '12px',
+                      padding: '1rem 1.25rem'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.5rem' }}>
+                      <span className="ta-qnum" style={{ background: isAI ? 'var(--orange, #ff7a29)' : '#555', color: '#fff', fontSize: '0.75rem', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                        {isAI ? 'Aarav (AI Interviewer)' : (candidate_name || 'You')}
+                      </span>
                     </div>
-                  </details>
+                    <div style={{ color: '#f6f6f3', fontSize: '0.95rem', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                      {msg.content}
+                    </div>
+                  </div>
                 );
-              }
-              return acc;
-            }, [])}
+              })}
+            </div>
           </div>
         )}
 

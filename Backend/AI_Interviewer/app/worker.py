@@ -373,8 +373,31 @@ async def entrypoint(ctx: agents.JobContext):
         interview_type = session_data.get("interview_type", interview_type)
         candidate_name = session_data.get("candidate_name", candidate_name)
         user_id = session_data.get("user_id", user_id)
-        if "state_data" in session_data:
-            ai_selected_questions = session_data["state_data"].get("ai_selected_questions", ai_selected_questions)
+        if "state_data" in session_data and session_data["state_data"]:
+            ai_selected_questions = session_data["state_data"].get("ai_selected_questions") or ai_selected_questions
+
+    # Fallback: Guarantee questions are always populated to prevent AI hallucinations
+    if not ai_selected_questions:
+        try:
+            import random
+            from app.services.http_client import http_client
+            from app.agent.graphs.base import normalize_interview_type
+            norm_type = normalize_interview_type(interview_type)
+            if norm_type == "dsa":
+                resp = await http_client.get(f"{settings.MAIN_SERVICE_URL}/dsa/questions", timeout=5.0)
+                if resp.status_code == 200:
+                    pool = resp.json()
+                    if isinstance(pool, list) and len(pool) > 0:
+                        ai_selected_questions = random.sample(pool, min(2, len(pool)))
+                        logger.info(f"Loaded {len(ai_selected_questions)} fallback questions from main_service for room {ctx.room.name}")
+            elif norm_type == "system_design":
+                resp = await http_client.get(f"{settings.MAIN_SERVICE_URL}/system-design/questions", timeout=5.0)
+                if resp.status_code == 200:
+                    pool = resp.json()
+                    if isinstance(pool, list) and len(pool) > 0:
+                        ai_selected_questions = random.sample(pool, min(1, len(pool)))
+        except Exception as e:
+            logger.warning(f"Could not load fallback questions: {e}")
 
     agent = InterviewAgent(
         room=ctx.room,
