@@ -19,10 +19,11 @@ from app.schemas.admin import (
     UserAdminListResponse,
     UserAdminSummary,
     UserAdminDetailResponse,
+    ProfileDetailResponse,
     UserAdminStatusUpdateRequest,
     AchievementCreateRequest,
 )
-from app.schemas.profile import ProfileResponse, PreferenceResponse, AchievementResponse
+from app.schemas.profile import UserPreferenceResponse, AchievementResponse
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -132,8 +133,8 @@ async def get_user_detail_admin(
 
     return UserAdminDetailResponse(
         user=UserAdminSummary.model_validate(user),
-        profile=ProfileResponse.model_validate(profile) if profile else None,
-        preferences=PreferenceResponse.model_validate(preferences) if preferences else None,
+        profile=ProfileDetailResponse.model_validate(profile) if profile else None,
+        preferences=UserPreferenceResponse.model_validate(preferences) if preferences else None,
         achievements=[AchievementResponse.model_validate(a) for a in achievements],
     )
 

@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, EmailStr, Field
-from app.schemas.profile import ProfileResponse, PreferenceResponse, AchievementResponse
+from app.schemas.profile import UserPreferenceResponse, AchievementResponse
 
 
 class UserAdminSummary(BaseModel):
@@ -25,10 +25,24 @@ class UserAdminListResponse(BaseModel):
     pages: int
 
 
+class ProfileDetailResponse(BaseModel):
+    bio: Optional[str] = None
+    avatar_url: Optional[str] = None
+    github_url: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    headline: Optional[str] = None
+    location: Optional[str] = None
+    institution: Optional[str] = None
+    preferred_language: Optional[str] = None
+    resume_url: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
 class UserAdminDetailResponse(BaseModel):
     user: UserAdminSummary
-    profile: Optional[ProfileResponse] = None
-    preferences: Optional[PreferenceResponse] = None
+    profile: Optional[ProfileDetailResponse] = None
+    preferences: Optional[UserPreferenceResponse] = None
     achievements: List[AchievementResponse] = []
 
 

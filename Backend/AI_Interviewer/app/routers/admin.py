@@ -11,7 +11,7 @@ import logging
 from datetime import datetime, timedelta, UTC
 
 from app.services.db import get_db
-from app.models.interview import InterviewSession, UserProfileReplica, InterviewFeedback, InterviewMessage
+from app.models.interview import InterviewSession, UserProfileReplica, InterviewFeedback
 from app.services.auth import get_current_user
 from app.config import settings
 
@@ -235,7 +235,6 @@ async def get_admin_interview_detail(
         select(InterviewSession)
         .options(
             joinedload(InterviewSession.feedback),
-            joinedload(InterviewSession.messages),
             joinedload(InterviewSession.user)
         )
         .where(InterviewSession.id == session_id)
@@ -245,14 +244,14 @@ async def get_admin_interview_detail(
     if not session:
         raise HTTPException(status_code=404, detail="Interview session not found")
 
-    messages = sorted(session.messages, key=lambda m: m.created_at) if session.messages else []
+    raw_messages = session.state_data.get("messages", []) if isinstance(session.state_data, dict) else []
     transcript = [
         {
-            "role": m.role,
-            "content": m.content,
-            "created_at": m.created_at.isoformat() if m.created_at else None
+            "role": m.get("role") if isinstance(m, dict) else getattr(m, "role", "unknown"),
+            "content": m.get("content") if isinstance(m, dict) else getattr(m, "content", ""),
+            "created_at": None
         }
-        for m in messages
+        for m in raw_messages
     ]
 
     feedback_data = None

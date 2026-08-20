@@ -72,4 +72,4 @@ async def test_publish_interview_completed_format():
 
         # 3. Verify Redis publish & leaderboard update
         mock_redis.publish.assert_called_once_with("interview_events", json.dumps(result))
-        mock_redis.zadd.assert_called_once_with("global_leaderboard", {candidate_name: overall_score})
+        mock_redis.zadd.assert_called_once_with("global_leaderboard", {f"{user_id}:{candidate_name}": overall_score})
