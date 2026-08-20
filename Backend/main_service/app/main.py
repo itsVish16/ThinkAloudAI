@@ -34,7 +34,13 @@ from sqlalchemy import text
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Modern lifespan context manager (replaces deprecated on_event)."""
-    # Startup: create tables and start event consumer
+    # Startup: ensure database exists, then create tables and start background tasks
+    try:
+        from app.database import ensure_db_exists
+        await ensure_db_exists(settings.DATABASE_URL)
+    except Exception:
+        pass
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 

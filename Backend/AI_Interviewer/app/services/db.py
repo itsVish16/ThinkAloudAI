@@ -18,9 +18,49 @@ async def get_db():
     async with AsyncSessionLocal() as session:
         yield session
 
+import asyncio
+import asyncpg
+from urllib.parse import urlparse
 from sqlalchemy import text
 
+async def ensure_db_exists(db_url: str):
+    if not db_url or "sqlite" in db_url:
+        return
+    clean_url = db_url.replace("postgresql+asyncpg://", "postgresql://").replace("postgres://", "postgresql://")
+    parsed = urlparse(clean_url)
+    db_name = parsed.path.lstrip("/")
+    user = parsed.username or "thinkaloud"
+    password = parsed.password or "thinkaloud_prod_secure"
+    host = parsed.hostname or "localhost"
+    port = parsed.port or 5432
+
+    for _ in range(15):
+        try:
+            conn = await asyncpg.connect(
+                user=user,
+                password=password,
+                host=host,
+                port=port,
+                database="postgres",
+                timeout=5
+            )
+            try:
+                exists = await conn.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", db_name)
+                if not exists:
+                    await conn.execute(f'CREATE DATABASE "{db_name}"')
+            finally:
+                await conn.close()
+            return
+        except Exception:
+            await asyncio.sleep(1)
+
+
 async def init_db():
+    try:
+        await ensure_db_exists(settings.DATABASE_URL)
+    except Exception:
+        pass
+
     async with engine.begin() as conn:
         # Create all tables
         await conn.run_sync(Base.metadata.create_all)
