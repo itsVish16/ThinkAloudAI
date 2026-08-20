@@ -100,9 +100,28 @@ export const RoadmapViewer: React.FC<RoadmapViewerProps> = ({ roadmap, onNavigat
                           e.stopPropagation(); // prevent toggling topic
                           if (onNavigate) {
                             if (item.content_type === 'dsa') {
-                              onNavigate('practice', { questionId: item.content_id });
+                              onNavigate('practice', { questionId: item.content_id || undefined });
                             } else if (item.content_type === 'mock_interview') {
-                              onNavigate('pre-join', { targetPage: 'dsa-interview', templateId: item.content_id, templateName: item.title });
+                              const text = `${item.title || ''} ${item.category || ''} ${item.track_type || ''}`.toLowerCase();
+                              let targetPage = 'dsa-interview';
+                              if (text.includes('system design') || text.includes('system_design')) {
+                                targetPage = 'system-design-interview';
+                              } else if (
+                                text.includes('behavioral') ||
+                                text.includes('hr') ||
+                                text.includes('general') ||
+                                text.includes('pm') ||
+                                text.includes('product') ||
+                                text.includes('aiml') ||
+                                text.includes('ai')
+                              ) {
+                                targetPage = 'general-interview';
+                              }
+                              onNavigate('pre-join', { 
+                                targetPage, 
+                                templateId: item.content_id || 'dsa', 
+                                templateName: item.title 
+                              });
                             }
                           }
                         }}

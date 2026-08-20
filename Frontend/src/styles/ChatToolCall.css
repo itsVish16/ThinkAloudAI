@@ -160,8 +160,8 @@
 }
 
 .status-badge.running {
-  background: rgba(168, 85, 247, 0.15);
-  color: #c084fc;
+  background: rgba(249, 115, 22, 0.15);
+  color: #fdba74;
 }
 
 .status-badge.completed {
@@ -177,7 +177,7 @@
   border-radius: 6px;
   font-family: 'Fira Code', 'Courier New', Courier, monospace;
   font-size: 0.78rem;
-  color: #38bdf8; /* Sky-400 (Console style output) */
+  color: #fdba74; /* Warm Amber (High contrast console output) */
   line-height: 1.5;
   overflow-x: auto;
   max-height: 200px;

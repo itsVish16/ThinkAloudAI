@@ -1,6 +1,6 @@
 /* ThinkAloudAI — Industrial Blueprint Design Tokens
  * theme: brutalist-tech
- * bg: #000000 (Black) · accent: #00F0FF (Cyan)
+ * bg: #000000 (Black) · accent: #f97316 (Warm Orange)
  * display: Inter/Space Grotesk · mono: JetBrains Mono
  * axes: dark / strict grid / hyper-precise / tech
  */
@@ -20,10 +20,20 @@
   --color-rule: #27272A;
   --color-rule-2: #3F3F46;
 
-  /* ---- Colour: Accent (Electric Cyan) ---- */
-  --color-accent: #00F0FF; 
-  --color-accent-hover: #00D5FF; 
-  --color-accent-glow: rgba(0, 240, 255, 0.15);
+  /* ---- Colour: Accent (Warm Orange) ---- */
+  --color-accent: #f97316; 
+  --color-accent-hover: #ea580c; 
+  --color-accent-glow: rgba(249, 115, 22, 0.25);
+  
+  --orange: #f97316;
+  --orange-2: #fb923c;
+  --orange-3: #fdba74;
+  --orange-dim: rgba(249, 115, 22, 0.25);
+  --orange-soft: rgba(249, 115, 22, 0.1);
+  --surface: #0e0e12;
+  --white: #ffffff;
+  --muted: #a1a1aa;
+  --muted-2: #9ca3af;
   
   /* ---- Surfaces (No Glass, No Shadows) ---- */
   --glass-bg: transparent;

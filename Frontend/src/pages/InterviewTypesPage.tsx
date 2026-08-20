@@ -184,7 +184,24 @@ export const InterviewTypesPage: React.FC<InterviewTypesPageProps> = ({ onNaviga
                   </div>
                   <button 
                     className="itp-btn-join"
-                    onClick={() => onNavigate('pre-join', { targetPage: 'dsa-interview', templateId: interview.content_id, templateName: interview.title })}
+                    onClick={() => {
+                      const text = `${interview.track_type || ''} ${interview.title || ''} ${interview.category || ''}`.toLowerCase();
+                      let targetPage = 'dsa-interview';
+                      if (text.includes('system design') || text.includes('system_design')) {
+                        targetPage = 'system-design-interview';
+                      } else if (
+                        text.includes('behavioral') ||
+                        text.includes('hr') ||
+                        text.includes('general') ||
+                        text.includes('pm') ||
+                        text.includes('product') ||
+                        text.includes('aiml') ||
+                        text.includes('ai')
+                      ) {
+                        targetPage = 'general-interview';
+                      }
+                      onNavigate('pre-join', { targetPage, templateId: interview.content_id, templateName: interview.title });
+                    }}
                   >
                     Join <ArrowRight size={13} />
                   </button>
