@@ -75,16 +75,10 @@ class AuthService:
                 )
             else:
                 if existing_username and existing_username.id != existing_email.id:
-                    if not existing_username.is_verified and existing_username.created_at:
-                        age = (datetime.now(UTC).replace(tzinfo=None) - existing_username.created_at.replace(tzinfo=None)).total_seconds()
-                        if age > 86400:
-                            await db.delete(existing_username)
-                            await db.flush()
-                        else:
-                            raise HTTPException(
-                                status_code=status.HTTP_409_CONFLICT,
-                                detail="Username is already taken",
-                            )
+                    from datetime import datetime, timedelta, UTC
+                    if not existing_username.is_verified and existing_username.created_at < datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=24):
+                        await db.delete(existing_username)
+                        await db.flush()
                     else:
                         raise HTTPException(
                             status_code=status.HTTP_409_CONFLICT,
@@ -107,16 +101,10 @@ class AuthService:
                 user = existing_email
         else:
             if existing_username is not None:
-                if not existing_username.is_verified and existing_username.created_at:
-                    age = (datetime.now(UTC).replace(tzinfo=None) - existing_username.created_at.replace(tzinfo=None)).total_seconds()
-                    if age > 86400:
-                        await db.delete(existing_username)
-                        await db.flush()
-                    else:
-                        raise HTTPException(
-                            status_code=status.HTTP_409_CONFLICT,
-                            detail="Username is already taken",
-                        )
+                from datetime import datetime, timedelta, UTC
+                if not existing_username.is_verified and existing_username.created_at < datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=24):
+                    await db.delete(existing_username)
+                    await db.flush()
                 else:
                     raise HTTPException(
                         status_code=status.HTTP_409_CONFLICT,
