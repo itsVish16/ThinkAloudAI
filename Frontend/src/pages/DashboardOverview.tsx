@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { Flame } from 'lucide-react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -596,7 +597,9 @@ export function DashboardOverview({ user, langgraphProfile, onNavigate, onSelect
 
           <section className="overview-card overview-streak-card overview-rise" style={{ animationDelay: '.1s' }}>
             <div className="overview-streak-head">
-              <div className="overview-flame-badge"><i className="ti ti-flame"></i></div>
+              <div className="overview-flame-badge">
+                <Flame size={22} color="#f97316" fill="#f97316" />
+              </div>
               <div><span className="overview-n">{langgraphProfile?.current_streak || 0} day{(langgraphProfile?.current_streak || 0) !== 1 ? 's' : ''}</span><span className="overview-l">Current streak</span></div>
             </div>
             <div className="overview-cal-month">{monthNames[m]} {y}</div>
@@ -612,19 +615,19 @@ export function DashboardOverview({ user, langgraphProfile, onNavigate, onSelect
                     key={d} 
                     className={`overview-cal-cell ${isActive ? 'active' : ''} ${isToday ? 'today' : ''} ${isPast && !isActive ? 'past' : ''}`}
                     title={isActive ? `${d} ${monthNames[m]} — practiced!` : undefined}
-                    style={{ position: 'relative' }}
                   >
                     {isActive ? (
-                      <i 
-                        className="ti ti-flame" 
+                      <Flame 
+                        size={15} 
+                        color="#f97316" 
+                        fill="#f97316" 
                         style={{ 
-                          color: '#FF6B00', 
-                          fontSize: '16px', 
-                          filter: 'drop-shadow(0 0 6px rgba(255,107,0,0.8))',
-                          transform: 'scale(1.2)'
-                        }}
-                      ></i>
-                    ) : d}
+                          filter: 'drop-shadow(0 0 5px rgba(249, 115, 22, 0.8))'
+                        }} 
+                      />
+                    ) : (
+                      <span>{d}</span>
+                    )}
                   </div>
                 );
               })}

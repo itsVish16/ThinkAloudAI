@@ -23,6 +23,9 @@ export interface CodeSubmitResponse {
   total_tests: number;
   error_message: string | null;
   execution_time_ms: number;
+  memory_mb?: number;
+  memory_kb?: number;
+  memory_bytes?: number;
 }
 
 import { API_BASE_URL } from '../config/api';

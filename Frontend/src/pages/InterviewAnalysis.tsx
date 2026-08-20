@@ -53,11 +53,25 @@ export function InterviewAnalysis({ sessionId, onNavigate }: InterviewAnalysisPr
     }
   }, [sessionId]);
 
-  const overallScore = Math.round(
-    ((analysisData?.evaluation?.technical_score || 0) +
-     (analysisData?.evaluation?.communication_score || 0) +
-     (analysisData?.evaluation?.english_score || 0)) / 3
-  ) || 0;
+  const calcFallbackScore = () => {
+    const tech = analysisData?.evaluation?.technical_score;
+    const comm = analysisData?.evaluation?.communication_score;
+    const eng = analysisData?.evaluation?.english_score;
+
+    const scores = [tech, comm, eng].filter((s): s is number => typeof s === 'number' && !isNaN(s));
+    if (scores.length === 0) return 0;
+    return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+  };
+
+  const rawOverall = 
+    analysisData?.evaluation?.overall_score ??
+    analysisData?.details?.overall_score ??
+    analysisData?.evaluation?.score ??
+    analysisData?.overall_score;
+
+  const overallScore = typeof rawOverall === 'number' && !isNaN(rawOverall)
+    ? Math.round(rawOverall)
+    : calcFallbackScore();
 
   const handleForceComplete = async () => {
     setIsGenerating(true);

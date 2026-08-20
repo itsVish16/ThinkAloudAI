@@ -151,7 +151,7 @@ export const AssistantUI: React.FC<AssistantUIProps> = ({ activeChatId }) => {
           <div className="w-12 h-12 ml-auto">
             <Orb 
               agentState={getAgentState()} 
-              colors={['#8b5cf6', '#3b82f6']} // Purple to blue 
+              colors={['#f97316', '#fb923c']} // Warm orange to amber glow
             />
           </div>
         )}
@@ -165,7 +165,7 @@ export const AssistantUI: React.FC<AssistantUIProps> = ({ activeChatId }) => {
             <div className="w-48 h-48 mb-8">
                <Orb 
                  agentState={getAgentState()} 
-                 colors={['#8b5cf6', '#3b82f6']} // Purple to blue premium vibe
+                 colors={['#f97316', '#fb923c']} // Warm orange to amber glow
                />
             </div>
             <h1 className="welcome-title-main text-center">

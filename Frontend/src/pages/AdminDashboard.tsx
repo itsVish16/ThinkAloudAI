@@ -1,9 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowLeft01Icon } from 'hugeicons-react';
+import React, { useState } from 'react';
+import { 
+  Users, 
+  Video, 
+  Code2, 
+  ArrowLeft, 
+  ShieldCheck,
+  Activity,
+  Layers
+} from 'lucide-react';
 import { UsersAnalytics } from '../components/admin/UsersAnalytics';
 import { InterviewsAnalytics } from '../components/admin/InterviewsAnalytics';
 import { CodingAnalytics } from '../components/admin/CodingAnalytics';
-import { apiClient } from '../services/apiClient';
 import '../styles/AdminDashboard.css';
 
 interface AdminDashboardProps {
@@ -11,145 +18,79 @@ interface AdminDashboardProps {
   user: any;
 }
 
-const API_URL = import.meta.env.VITE_API_URL || '';
-
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate, user }) => {
   const [activeTab, setActiveTab] = useState<'users' | 'interviews' | 'coding'>('users');
-  
-  const [usersStats, setUsersStats] = useState<any>(null);
-  const [usersData, setUsersData] = useState<any[]>([]);
-  
-  const [interviewStats, setInterviewStats] = useState<any>(null);
-  const [interviewsData, setInterviewsData] = useState<any[]>([]);
-  
-  const [codingStats, setCodingStats] = useState<any>(null);
-  const [roadmapStats, setRoadmapStats] = useState<any>(null);
-  
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const token = localStorage.getItem('access_token');
-        if (!token) {
-          setError("Not authenticated");
-          return;
-        }
-        
-        // Fetch User Stats
-        const usersStatsRes = await apiClient.fetchWithAuth(`${API_URL}/api/v1/users/admin/users/stats`);
-        if (usersStatsRes.ok) {
-          setUsersStats(await usersStatsRes.json());
-        } else if (usersStatsRes.status === 403) {
-          setError("You do not have admin privileges.");
-          setLoading(false);
-          return;
-        }
-
-        const usersRes = await apiClient.fetchWithAuth(`${API_URL}/api/admin/users`); // keeping existing users list
-        if (usersRes.ok) {
-          const uData = await usersRes.json();
-          setUsersData(uData.users || uData);
-        }
-
-        // Fetch Interview Stats
-        const intStatsRes = await apiClient.fetchWithAuth(`${API_URL}/api/admin/stats`);
-        if (intStatsRes.ok) {
-          setInterviewStats(await intStatsRes.json());
-        }
-
-        const intRes = await apiClient.fetchWithAuth(`${API_URL}/api/admin/interviews`);
-        if (intRes.ok) {
-          const iData = await intRes.json();
-          setInterviewsData(iData.interviews || iData);
-        }
-
-        // Fetch Coding & Roadmap Stats
-        const codeRes = await apiClient.fetchWithAuth(`${API_URL}/admin/coding/stats`);
-        if (codeRes.ok) {
-          setCodingStats(await codeRes.json());
-        }
-
-        const roadmapRes = await apiClient.fetchWithAuth(`${API_URL}/admin/roadmaps/stats`);
-        if (roadmapRes.ok) {
-          setRoadmapStats(await roadmapRes.json());
-        }
-
-      } catch (err: any) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchData();
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="admin-dashboard loading">
-        <div className="spinner"></div>
-        <p>Loading Admin Data...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="admin-dashboard error">
-        <div className="error-content glass-panel">
-          <h2 className="text-xl font-bold text-red-500 mb-2">Access Denied</h2>
-          <p className="text-white/70">{error}</p>
-          <button className="btn-primary mt-4" onClick={() => onNavigate('dashboard')}>
-            <ArrowLeft01Icon size={18} /> Back to Dashboard
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const isAdmin = Boolean(
+    (user?.role && user.role.toLowerCase() === 'admin') ||
+    (user?.is_admin === true)
+  );
 
   return (
-    <div className="admin-dashboard">
-      <div className="admin-header glass-panel">
-        <div className="flex items-center gap-4">
-          <button className="back-btn" onClick={() => onNavigate('dashboard')}>
-            <ArrowLeft01Icon />
-          </button>
-          <div>
-            <h1 className="admin-title">Admin Dashboard</h1>
-            <p className="admin-subtitle">Platform Analytics & Management</p>
+    <div className="admin-root">
+      {/* Top Navbar */}
+      <header className="admin-header-bar">
+        <div className="admin-header-inner">
+          <div className="flex items-center gap-4">
+            <button className="admin-back-btn" onClick={() => onNavigate('dashboard')}>
+              <ArrowLeft size={16} />
+              <span>Back to Dashboard</span>
+            </button>
+            <div className="admin-header-titles">
+              <h1 className="admin-main-title">ThinkAloud Admin Control Center</h1>
+              <p className="admin-main-subtitle">Unified microservice metrics, candidate dossiers, and problem catalog</p>
+            </div>
+          </div>
+
+          <div className="admin-header-meta">
+            <div className="admin-pulse-badge">
+              <span className="admin-pulse-dot" />
+              <span>Live Console</span>
+            </div>
+            <div className="admin-user-pill">
+              <ShieldCheck size={14} className="text-orange-400" />
+              <span>{user?.email || 'admin@thinkaloudai.tech'}</span>
+            </div>
           </div>
         </div>
-      </div>
+      </header>
 
-      <div className="admin-tabs-container glass-panel mt-6">
-        <div className="admin-tabs">
-          <button 
-            className={`admin-tab ${activeTab === 'users' ? 'active' : ''}`}
-            onClick={() => setActiveTab('users')}
-          >
-            Users Analytics
-          </button>
-          <button 
-            className={`admin-tab ${activeTab === 'interviews' ? 'active' : ''}`}
-            onClick={() => setActiveTab('interviews')}
-          >
-            Interviews
-          </button>
-          <button 
-            className={`admin-tab ${activeTab === 'coding' ? 'active' : ''}`}
-            onClick={() => setActiveTab('coding')}
-          >
-            Coding & Roadmaps
-          </button>
+      {/* Main Container */}
+      <main className="admin-canvas">
+        {/* Tab Switcher */}
+        <div className="admin-tabs-card">
+          <div className="admin-tabs-list">
+            <button 
+              className={`admin-main-tab ${activeTab === 'users' ? 'active' : ''}`}
+              onClick={() => setActiveTab('users')}
+            >
+              <Users size={16} />
+              <span>Users &amp; Gamification</span>
+            </button>
+            <button 
+              className={`admin-main-tab ${activeTab === 'interviews' ? 'active' : ''}`}
+              onClick={() => setActiveTab('interviews')}
+            >
+              <Video size={16} />
+              <span>Mock Interviews Audit</span>
+            </button>
+            <button 
+              className={`admin-main-tab ${activeTab === 'coding' ? 'active' : ''}`}
+              onClick={() => setActiveTab('coding')}
+            >
+              <Code2 size={16} />
+              <span>DSA Catalog &amp; Submissions</span>
+            </button>
+          </div>
         </div>
-      </div>
 
-      <div className="admin-content mt-6">
-        {activeTab === 'users' && <UsersAnalytics stats={usersStats} users={usersData} />}
-        {activeTab === 'interviews' && <InterviewsAnalytics stats={interviewStats} interviews={interviewsData} />}
-        {activeTab === 'coding' && <CodingAnalytics stats={codingStats} roadmapStats={roadmapStats} />}
-      </div>
+        {/* Tab Panels */}
+        <div className="admin-panel-viewport">
+          {activeTab === 'users' && <UsersAnalytics />}
+          {activeTab === 'interviews' && <InterviewsAnalytics />}
+          {activeTab === 'coding' && <CodingAnalytics />}
+        </div>
+      </main>
     </div>
   );
 };

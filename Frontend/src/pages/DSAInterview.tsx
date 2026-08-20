@@ -232,7 +232,7 @@ export const DSAInterview: React.FC<DSAInterviewProps> = ({ questionId, template
       setConsoleOutput({
         status: data.status,
         runtime: data.execution_time_ms ? `${data.execution_time_ms.toFixed(2)} ms` : 'N/A',
-        memory: '14.2 MB',
+        memory: data.memory_mb ? `${data.memory_mb} MB` : (data.memory_kb ? `${(data.memory_kb / 1024).toFixed(1)} MB` : 'N/A'),
         raw: data
       });
     } catch (err: any) {
@@ -258,7 +258,7 @@ export const DSAInterview: React.FC<DSAInterviewProps> = ({ questionId, template
       setConsoleOutput({
         status: data.status,
         runtime: data.execution_time_ms ? `${data.execution_time_ms.toFixed(2)} ms` : 'N/A',
-        memory: '14.2 MB',
+        memory: data.memory_mb ? `${data.memory_mb} MB` : (data.memory_kb ? `${(data.memory_kb / 1024).toFixed(1)} MB` : 'N/A'),
         raw: data
       });
     } catch (err: any) {

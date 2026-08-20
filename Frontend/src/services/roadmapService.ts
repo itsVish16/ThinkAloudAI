@@ -9,6 +9,8 @@ export interface RoadmapItem {
   content_id: string | null;
   timeline_days: number;
   is_completed: boolean;
+  category?: string;
+  track_type?: string;
 }
 
 import { apiClient } from './apiClient';

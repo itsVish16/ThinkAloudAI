@@ -369,6 +369,18 @@ button, input, textarea, select {
 @layer base {
   * {
     border-color: var(--border);
+    -webkit-tap-highlight-color: transparent;
+  }
+  *:focus-visible {
+    outline: 2px solid rgba(249, 115, 22, 0.5);
+    outline-offset: 2px;
+  }
+  .logo,
+  .logo:focus,
+  .logo:active,
+  .logo:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
   }
   body {
     @apply bg-background text-foreground;
