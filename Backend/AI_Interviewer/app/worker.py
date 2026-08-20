@@ -41,6 +41,34 @@ async def queue_generator(queue: asyncio.Queue, metrics_tracker: Any = None):
             first_token = False
         yield token
 
+
+def serialize_state_safely(state: dict) -> dict:
+    import json
+    clean_state = {}
+    for k, v in state.items():
+        if k in ("stream_queue", "current_turn_metrics"):
+            continue
+        try:
+            json.dumps(v)
+            clean_state[k] = v
+        except (TypeError, OverflowError):
+            if hasattr(v, "model_dump"):
+                clean_state[k] = v.model_dump()
+            elif isinstance(v, list):
+                clean_list = []
+                for item in v:
+                    if hasattr(item, "model_dump"):
+                        clean_list.append(item.model_dump())
+                    elif isinstance(item, dict):
+                        clean_list.append(item)
+                    else:
+                        clean_list.append(str(item))
+                clean_state[k] = clean_list
+            else:
+                clean_state[k] = str(v)
+    return clean_state
+
+
 class InterviewAgent(Agent):
     def __init__(self, room, room_id: str, candidate_name: str, user_id: str, interview_type: str, ai_selected_questions: list = None, session_data: dict = None):
         super().__init__(
@@ -144,10 +172,8 @@ class InterviewAgent(Agent):
                     # Notify frontend that the problem should be revealed
                     payload = json.dumps({"type": "reveal_problem"})
                     await self.room.local_participant.publish_data(payload.encode("utf-8"))
-                
-                # Prepare state copy without the non-serializable queue for Postgres persistence
-                state_to_save = self.state.copy()
-                state_to_save.pop("stream_queue", None)
+                # Prepare state copy with robust serialization for Postgres persistence
+                state_to_save = serialize_state_safely(self.state)
 
                 await save_interview_session(
                     session_id=self.room_id,
@@ -168,6 +194,14 @@ class InterviewAgent(Agent):
         self._analysis_published = True
         logger.info("Initiating self-termination sequence...")
         
+        # Notify frontend via DataChannel that interview has officially completed
+        try:
+            if self.room and self.room.local_participant:
+                payload = json.dumps({"type": "interview_completed", "sessionId": self.room_id})
+                await self.room.local_participant.publish_data(payload.encode("utf-8"))
+        except Exception as e:
+            logger.warning(f"Could not publish interview_completed DataChannel: {e}")
+
         # Trigger Background Analysis via RabbitMQ
         from app.services.rabbitmq import publish_analysis_task
         payload = {
@@ -244,9 +278,7 @@ class InterviewAgent(Agent):
                 self.state = updated_state
 
             # Persist state after each turn to ensure transcript is never lost
-            state_to_save = self.state.copy()
-            state_to_save.pop("stream_queue", None)
-            state_to_save.pop("current_turn_metrics", None)
+            state_to_save = serialize_state_safely(self.state)
             asyncio.create_task(save_interview_session(
                 session_id=self.room_id,
                 user_id=self.user_id,
@@ -373,8 +405,31 @@ async def entrypoint(ctx: agents.JobContext):
         interview_type = session_data.get("interview_type", interview_type)
         candidate_name = session_data.get("candidate_name", candidate_name)
         user_id = session_data.get("user_id", user_id)
-        if "state_data" in session_data:
-            ai_selected_questions = session_data["state_data"].get("ai_selected_questions", ai_selected_questions)
+        if "state_data" in session_data and session_data["state_data"]:
+            ai_selected_questions = session_data["state_data"].get("ai_selected_questions") or ai_selected_questions
+
+    # Fallback: Guarantee questions are always populated to prevent AI hallucinations
+    if not ai_selected_questions:
+        try:
+            import random
+            from app.services.http_client import http_client
+            from app.agent.graphs.base import normalize_interview_type
+            norm_type = normalize_interview_type(interview_type)
+            if norm_type == "dsa":
+                resp = await http_client.get(f"{settings.MAIN_SERVICE_URL}/dsa/questions", timeout=5.0)
+                if resp.status_code == 200:
+                    pool = resp.json()
+                    if isinstance(pool, list) and len(pool) > 0:
+                        ai_selected_questions = random.sample(pool, min(2, len(pool)))
+                        logger.info(f"Loaded {len(ai_selected_questions)} fallback questions from main_service for room {ctx.room.name}")
+            elif norm_type == "system_design":
+                resp = await http_client.get(f"{settings.MAIN_SERVICE_URL}/system-design/questions", timeout=5.0)
+                if resp.status_code == 200:
+                    pool = resp.json()
+                    if isinstance(pool, list) and len(pool) > 0:
+                        ai_selected_questions = random.sample(pool, min(1, len(pool)))
+        except Exception as e:
+            logger.warning(f"Could not load fallback questions: {e}")
 
     agent = InterviewAgent(
         room=ctx.room,

@@ -16,6 +16,7 @@ INTERVIEW_FLOWS: Dict[str, List[str]] = {
     "general": [
         InterviewStage.INTRO_AUDIO_CHECK.value,
         InterviewStage.INTRO_AGENDA.value,
+        InterviewStage.INTRO_BACKGROUND.value,
         InterviewStage.INTRO_CANDIDATE.value,
         InterviewStage.RESUME_PROBE.value,
         InterviewStage.CANDIDATE_QA.value,
@@ -25,6 +26,7 @@ INTERVIEW_FLOWS: Dict[str, List[str]] = {
     "system_design": [
         InterviewStage.INTRO_AUDIO_CHECK.value,
         InterviewStage.INTRO_AGENDA.value,
+        InterviewStage.INTRO_BACKGROUND.value,
         InterviewStage.INTRO_CANDIDATE.value,
         InterviewStage.SYSTEM_DESIGN_REQUIREMENTS.value,
         InterviewStage.SYSTEM_DESIGN_HLD.value,
@@ -36,12 +38,12 @@ INTERVIEW_FLOWS: Dict[str, List[str]] = {
     "dsa": [
         InterviewStage.INTRO_AUDIO_CHECK.value,
         InterviewStage.INTRO_AGENDA.value,
+        InterviewStage.INTRO_BACKGROUND.value,
         InterviewStage.INTRO_CANDIDATE.value,
         InterviewStage.DSA_PRESENTATION.value,
         InterviewStage.DSA_APPROACH.value,
         InterviewStage.DSA_CODING.value,
         InterviewStage.DSA_TESTING.value,
-        InterviewStage.RESUME_PROBE.value,
         InterviewStage.CANDIDATE_QA.value,
         InterviewStage.WRAP_UP.value,
         InterviewStage.COMPLETED.value,
@@ -49,6 +51,7 @@ INTERVIEW_FLOWS: Dict[str, List[str]] = {
     "hr": [
         InterviewStage.INTRO_AUDIO_CHECK.value,
         InterviewStage.INTRO_AGENDA.value,
+        InterviewStage.INTRO_BACKGROUND.value,
         InterviewStage.INTRO_CANDIDATE.value,
         InterviewStage.BEHAVIORAL_QUESTION.value,
         InterviewStage.BEHAVIORAL_FOLLOWUP.value,
@@ -59,6 +62,7 @@ INTERVIEW_FLOWS: Dict[str, List[str]] = {
     "pm": [
         InterviewStage.INTRO_AUDIO_CHECK.value,
         InterviewStage.INTRO_AGENDA.value,
+        InterviewStage.INTRO_BACKGROUND.value,
         InterviewStage.INTRO_CANDIDATE.value,
         InterviewStage.PM_PROBLEM_FRAMING.value,
         InterviewStage.PM_USER_SEGMENTATION.value,
@@ -71,6 +75,7 @@ INTERVIEW_FLOWS: Dict[str, List[str]] = {
     "presentation": [
         InterviewStage.INTRO_AUDIO_CHECK.value,
         InterviewStage.INTRO_AGENDA.value,
+        InterviewStage.INTRO_BACKGROUND.value,
         InterviewStage.INTRO_CANDIDATE.value,
         InterviewStage.PRESENTATION_QA.value,
         InterviewStage.CANDIDATE_QA.value,
@@ -80,6 +85,7 @@ INTERVIEW_FLOWS: Dict[str, List[str]] = {
     "ai_ml": [
         InterviewStage.INTRO_AUDIO_CHECK.value,
         InterviewStage.INTRO_AGENDA.value,
+        InterviewStage.INTRO_BACKGROUND.value,
         InterviewStage.INTRO_CANDIDATE.value,
         InterviewStage.AIML_FUNDAMENTALS.value,
         InterviewStage.AIML_SYSTEM.value,
@@ -87,6 +93,34 @@ INTERVIEW_FLOWS: Dict[str, List[str]] = {
         InterviewStage.WRAP_UP.value,
         InterviewStage.COMPLETED.value,
     ],
+}
+
+MIN_TURNS_PER_STAGE: Dict[str, int] = {
+    "intro_welcome": 1,
+    "intro_audio_check": 1,
+    "intro_agenda": 1,
+    "intro_background": 2,
+    "resume_probe": 2,
+    "intro_candidate": 1,
+    "intro_editor": 1,
+    "dsa_presentation": 1,
+    "dsa_approach": 2,
+    "dsa_coding": 1,
+    "dsa_testing": 1,
+    "system_design_requirements": 2,
+    "system_design_hld": 2,
+    "system_design_deep_dive": 2,
+    "behavioral_question": 2,
+    "behavioral_followup": 1,
+    "pm_problem_framing": 2,
+    "pm_user_segmentation": 2,
+    "pm_solution_brainstorming": 2,
+    "pm_metrics_and_execution": 2,
+    "aiml_fundamentals": 2,
+    "aiml_system": 2,
+    "candidate_qa": 2,
+    "wrap_up": 1,
+    "completed": 1,
 }
 
 
@@ -164,11 +198,12 @@ async def generate_response(state: InterviewState) -> Dict[str, Any]:
         q_title = active_q.get("title", "")
         q_desc = active_q.get("description", "")
         q_diff = active_q.get("difficulty", "")
-        formatted_q = f"Title: {q_title}"
+        formatted_q = f"ACTIVE PROBLEM TITLE: {q_title}"
         if q_diff:
             formatted_q += f" (Difficulty: {q_diff})"
         if q_desc:
             formatted_q += f"\nDescription:\n{q_desc}"
+        formatted_q += f"\n\nCRITICAL INSTRUCTION: The candidate is looking at the problem '{q_title}' on their screen. You MUST discuss and refer to '{q_title}'. NEVER introduce, describe, or make up any other problem."
     elif active_q:
         formatted_q = str(active_q)
     else:
@@ -289,6 +324,8 @@ async def evaluate_and_route(state: InterviewState) -> Dict[str, Any]:
     eval_prompt = EVALUATION_PROMPT.format(
         stage=current_stage,
         turns_in_stage=turns_in_stage,
+        elapsed_minutes=int(elapsed_minutes),
+        max_duration_minutes=max_duration,
         stage_rule=stage_rule,
         latest_code=eval_code,
         latest_execution=eval_exec,
@@ -313,7 +350,9 @@ async def evaluate_and_route(state: InterviewState) -> Dict[str, Any]:
 
     evaluations = list(state.get("evaluations", [])) + [eval_dict]
 
-    should_advance = objective_met or turns_in_stage >= 10 or time_exceeded
+    min_turns = MIN_TURNS_PER_STAGE.get(current_stage, 1)
+    min_turns_met = turns_in_stage >= min_turns
+    should_advance = (objective_met and min_turns_met) or turns_in_stage >= 10 or time_exceeded
     should_end = state.get("should_end", False)
 
     # Track-specific multi-question loop

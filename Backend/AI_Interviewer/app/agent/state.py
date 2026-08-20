@@ -3,9 +3,11 @@ from typing import TypedDict, List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 
 class InterviewStage(str, Enum):
-    # Strict intro flow
+    # Structured intro flow
+    INTRO_WELCOME = "intro_welcome"
     INTRO_AUDIO_CHECK = "intro_audio_check"
     INTRO_AGENDA = "intro_agenda"
+    INTRO_BACKGROUND = "intro_background"
     INTRO_CANDIDATE = "intro_candidate"
     INTRO_EDITOR = "intro_editor"
     

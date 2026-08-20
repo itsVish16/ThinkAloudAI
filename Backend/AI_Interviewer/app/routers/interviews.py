@@ -49,11 +49,30 @@ async def get_interview_details(
             detail="Forbidden: You do not have permission to view this interview."
         )
     
+    raw_messages = session.get("state_data", {}).get("messages", []) if session.get("state_data") else []
+    cleaned_transcript = []
+    import re
+    for msg in raw_messages:
+        if msg.get("role") == "system":
+            continue
+        content = msg.get("content", "")
+        # Remove internal observation/system tags
+        content = re.sub(r"\[Candidate Visual Observation:.*?\]\s*", "", content)
+        content = re.sub(r"\[Candidate Whiteboard Observation:.*?\]\s*", "", content)
+        content = re.sub(r"\[Candidate says:\s*", "", content)
+        content = re.sub(r"\[SYSTEM:.*?\]\s*", "", content)
+        content = content.strip()
+        if content:
+            cleaned_transcript.append({
+                "role": msg.get("role"),
+                "content": content
+            })
+
     return {
         "room_name": session["id"],
         "stage": session["stage"],
         "candidate_name": session["candidate_name"],
-        "transcript": session.get("state_data", {}).get("messages", []) if session.get("state_data") else [],
+        "transcript": cleaned_transcript,
         "evaluation": session.get("feedback"),
         "created_at": session["created_at"],
         "updated_at": session["updated_at"]
