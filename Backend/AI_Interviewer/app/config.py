@@ -15,7 +15,7 @@ class Config(BaseSettings):
 
     # Sarvam AI Unified Config (TTS, STT, and LLM)
     SARVAM_API_KEY: Optional[str] = None
-    SARVAM_BASE_URL: str = "https://api.sarvam.ai/v2"
+    SARVAM_BASE_URL: str = "https://api.sarvam.ai/v1"
     SARVAM_MODEL: str = "gemma4"
     SARVAM_TTS_MODEL: str = "bulbul:v3"
     SARVAM_TTS_SPEAKER: str = "shubh"
@@ -27,24 +27,28 @@ class Config(BaseSettings):
     SARVAM_STT_LANGUAGE: str = "en-IN"
     SARVAM_STT_URL: Optional[str] = None
 
-    # Dual-LLM Architecture Settings
-    DUAL_LLM_ENABLED: bool = True
+    # Single Fast LLM Mode (Defaults to Sarvam gemma4 for ultra low-latency)
+    DUAL_LLM_ENABLED: bool = False
 
-    # Fast Responder LLM (Ultra-Low Latency, e.g. Sarvam gemma4 / Fireworks Llama-3.2-3B/8B / Groq)
+    # Fast Responder LLM
     FAST_LLM_API_KEY: str = ""
     FAST_LLM_MODEL: str = "gemma4"
-    FAST_LLM_BASE_URL: str = "https://api.sarvam.ai/v2"
-    FAST_LLM_MAX_TOKENS: int = 35
+    FAST_LLM_BASE_URL: str = "https://api.sarvam.ai/v1"
+    FAST_LLM_MAX_TOKENS: int = 60
 
-    # Main Deep Reasoning LLM (Full context reasoning, e.g. Fireworks DeepSeek-V3 / Nemotron)
+    # Main Reasoning LLM (Defaults to Sarvam gemma4)
     MAIN_LLM_API_KEY: str = ""
-    MAIN_LLM_MODEL: str = "accounts/fireworks/models/deepseek-v3"
-    MAIN_LLM_BASE_URL: str = "https://api.fireworks.ai/inference/v1"
+    MAIN_LLM_MODEL: str = "gemma4"
+    MAIN_LLM_BASE_URL: str = "https://api.sarvam.ai/v1"
 
-    # Separate model for background post-interview analysis (latency not critical)
+    # Fireworks AI / DeepSeek for Background Post-Interview Analysis & Grading
+    FIREWORKS_API_KEY: str = ""
+    FIREWORKS_BASE_URL: str = "https://api.fireworks.ai/inference/v1"
+    FIREWORKS_MODEL: str = "accounts/fireworks/models/deepseek-v3"
+
     ANALYSIS_LLM_API_KEY: str = ""
-    ANALYSIS_LLM_MODEL: str = ""
-    ANALYSIS_LLM_BASE_URL: str = ""
+    ANALYSIS_LLM_MODEL: str = "accounts/fireworks/models/deepseek-v3"
+    ANALYSIS_LLM_BASE_URL: str = "https://api.fireworks.ai/inference/v1"
 
     # Legacy fallback LLM Settings (OpenAI-compatible)
     LLM_API_KEY: str = ""
@@ -98,15 +102,15 @@ class Config(BaseSettings):
 
     @property
     def analysis_llm_key(self) -> str:
-        return self.ANALYSIS_LLM_API_KEY or self.main_llm_key
+        return self.ANALYSIS_LLM_API_KEY or self.FIREWORKS_API_KEY or self.SARVAM_API_KEY or self.main_llm_key
 
     @property
     def analysis_llm_url(self) -> str:
-        return self.ANALYSIS_LLM_BASE_URL or self.main_llm_url
+        return self.ANALYSIS_LLM_BASE_URL or self.FIREWORKS_BASE_URL or self.SARVAM_BASE_URL
 
     @property
     def analysis_llm_model(self) -> str:
-        return self.ANALYSIS_LLM_MODEL or self.MAIN_LLM_MODEL
+        return self.ANALYSIS_LLM_MODEL or self.FIREWORKS_MODEL or "accounts/fireworks/models/deepseek-v3"
 
     @property
     def cors_allowed_origins_list(self) -> List[str]:

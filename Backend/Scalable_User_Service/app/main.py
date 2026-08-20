@@ -78,6 +78,7 @@ app.add_middleware(
 
 app.include_router(user_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1/users")
+app.include_router(admin_router, prefix="/api/v1")
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):

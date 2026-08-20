@@ -43,6 +43,7 @@ def compare(actual, expected, mode):
 def run_code_in_docker(code: str, function_name: str, test_cases_json: str, language: str = "python", test_harness: str = None) -> dict:
     if language not in ["python", "cpp"]:
         return {
+            "memory_used_kb": 0,
             "status": "Unsupported Language",
             "passed_tests": 0,
             "total_tests": 0,
@@ -56,6 +57,7 @@ def run_code_in_docker(code: str, function_name: str, test_cases_json: str, lang
         comparison_mode = schema.get("comparison", "exact")
     except json.JSONDecodeError:
         return {
+            "memory_used_kb": 0,
             "status": "Configuration Error",
             "passed_tests": 0,
             "total_tests": 0,
@@ -115,6 +117,7 @@ print(json.dumps({{"results": results, "time_ms": execution_time_ms}}))
     elif language == "cpp":
         if not test_harness:
             return {
+            "memory_used_kb": 0,
                 "status": "Runtime Error",
                 "passed_tests": 0,
                 "total_tests": total_tests,
@@ -192,8 +195,7 @@ print(json.dumps({{"results": results, "time_ms": execution_time_ms}}))
         cmd = "python3 /home/user/runner.py"
 
     try:
-        os.environ["E2B_API_KEY"] = settings.E2B_API_KEY
-        with Sandbox.create() as sandbox:
+        with Sandbox(api_key=settings.E2B_API_KEY) as sandbox:
             sandbox.files.write(filename, runner_script)
             if language == "cpp":
                 sandbox.files.write("/home/user/main.cpp", cpp_code)
@@ -221,6 +223,7 @@ print(json.dumps({{"results": results, "time_ms": execution_time_ms}}))
                     stderr = ""
                 else:
                     return {
+            "memory_used_kb": 0,
                         "status": "Sandbox Error",
                         "passed_tests": 0,
                         "total_tests": total_tests,
@@ -230,6 +233,7 @@ print(json.dumps({{"results": results, "time_ms": execution_time_ms}}))
                     
             if is_timeout:
                 return {
+            "memory_used_kb": 0,
                     "status": "Time Limit Exceeded",
                     "passed_tests": 0,
                     "total_tests": total_tests,
@@ -255,6 +259,7 @@ print(json.dumps({{"results": results, "time_ms": execution_time_ms}}))
                 if language == "cpp":
                     err_msg = parse_cpp_error(err_msg, cpp_code)
                 return {
+            "memory_used_kb": 0,
                     "status": "Runtime Error" if exit_code != 0 else "Sandbox Error",
                     "passed_tests": 0,
                     "total_tests": total_tests,
@@ -264,6 +269,7 @@ print(json.dumps({{"results": results, "time_ms": execution_time_ms}}))
                 
             if "compile_error" in out_data:
                 return {
+            "memory_used_kb": 0,
                     "status": "Compilation Error",
                     "passed_tests": 0,
                     "total_tests": total_tests,
@@ -305,6 +311,7 @@ print(json.dumps({{"results": results, "time_ms": execution_time_ms}}))
                 status = "Time Limit Exceeded"
                 
             return {
+            "memory_used_kb": 0,
                 "status": status,
                 "passed_tests": passed,
                 "total_tests": total_tests,
@@ -314,6 +321,7 @@ print(json.dumps({{"results": results, "time_ms": execution_time_ms}}))
 
     except Exception as e:
         return {
+            "memory_used_kb": 0,
             "status": "System Error",
             "passed_tests": 0,
             "total_tests": total_tests,

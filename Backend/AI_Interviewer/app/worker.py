@@ -584,25 +584,38 @@ async def entrypoint(ctx: agents.JobContext):
         # Only publish analysis if trigger_termination hasn't already done it
         if not getattr(agent, "_analysis_published", False) and agent.state.get("stage") != "intro_audio_check":
             agent._analysis_published = True
-            from app.services.rabbitmq import publish_analysis_task
-            payload = {
-                "session_id": agent.room_id,
-                "user_id": agent.user_id,
-                "candidate_name": agent.candidate_name,
-                "interview_type": agent.interview_type,
-                "messages": agent.state["messages"],
-                "opik_trace_id": agent.state.get("opik_trace_id")
-            }
-            asyncio.create_task(publish_analysis_task(payload))
+            
+            async def safe_publish():
+                try:
+                    from app.services.rabbitmq import publish_analysis_task
+                    payload = {
+                        "session_id": agent.room_id,
+                        "user_id": agent.user_id,
+                        "candidate_name": agent.candidate_name,
+                        "interview_type": agent.interview_type,
+                        "messages": agent.state["messages"],
+                        "opik_trace_id": agent.state.get("opik_trace_id")
+                    }
+                    await publish_analysis_task(payload)
+                except Exception as e:
+                    logger.error(f"Failed to publish analysis task during disconnect: {e}")
+            
+            asyncio.create_task(safe_publish())
 
-        asyncio.create_task(save_interview_session(
-            session_id=agent.room_id,
-            user_id=agent.user_id,
-            candidate_name=agent.candidate_name,
-            interview_type=agent.interview_type,
-            stage=agent.state["stage"],
-            state_data=state_to_save
-        ))
+        async def safe_save():
+            try:
+                await save_interview_session(
+                    session_id=agent.room_id,
+                    user_id=agent.user_id,
+                    candidate_name=agent.candidate_name,
+                    interview_type=agent.interview_type,
+                    stage=agent.state["stage"],
+                    state_data=state_to_save
+                )
+            except Exception as e:
+                logger.error(f"Failed to save session during disconnect: {e}")
+                
+        asyncio.create_task(safe_save())
 
     logger.info("Starting AgentSession...")
     asyncio.create_task(interview_timer_task(ctx.room, agent.state["max_duration_minutes"]))

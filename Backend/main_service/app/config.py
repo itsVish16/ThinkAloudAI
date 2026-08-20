@@ -53,6 +53,14 @@ class Settings(BaseSettings):
         default="amqp://guest:guest@localhost:5672/",
         validation_alias=AliasChoices("RABBITMQ_URL", "rabbitmq_url")
     )
+    SARVAM_API_KEY: str = Field(
+        default="",
+        validation_alias=AliasChoices("SARVAM_API_KEY", "sarvam_api_key")
+    )
+    OPENAI_API_KEY: str = Field(
+        default="",
+        validation_alias=AliasChoices("OPENAI_API_KEY", "openai_api_key")
+    )
     E2B_API_KEY: str = ""
     OPIK_API_KEY: str = ""
     OPIK_WORKSPACE: str = "default"
@@ -66,13 +74,33 @@ class Settings(BaseSettings):
     )
 
     def model_post_init(self, __context) -> None:
-        if not self.FIREWORKS_API_KEY:
-            self.FIREWORKS_API_KEY = (
-                os.environ.get("FIREWORKS_API_KEY")
-                or os.environ.get("OPENAI_API_KEY")
-                or ""
-            )
-        self.FIREWORKS_API_KEY = self.FIREWORKS_API_KEY.strip().strip("'\"")
+        self.FIREWORKS_API_KEY = (
+            self.FIREWORKS_API_KEY
+            or os.environ.get("FIREWORKS_API_KEY")
+            or ""
+        ).strip().strip("'\"")
+
+        self.SARVAM_API_KEY = (
+            self.SARVAM_API_KEY
+            or os.environ.get("SARVAM_API_KEY")
+            or ""
+        ).strip().strip("'\"")
+
+        self.OPENAI_API_KEY = (
+            self.OPENAI_API_KEY
+            or os.environ.get("OPENAI_API_KEY")
+            or ""
+        ).strip().strip("'\"")
+
+        # Fallback to Sarvam AI if Fireworks key is missing or placeholder
+        if (not self.FIREWORKS_API_KEY or self.FIREWORKS_API_KEY in ["your_fireworks_api_key", "dummy-api-key-for-startup"]) and self.SARVAM_API_KEY:
+            self.FIREWORKS_API_KEY = self.SARVAM_API_KEY
+            self.FIREWORKS_BASE_URL = "https://api.sarvam.ai/v1"
+            self.FIREWORKS_MODEL = "sarvam-105b"
+        elif (not self.FIREWORKS_API_KEY or self.FIREWORKS_API_KEY in ["your_fireworks_api_key", "dummy-api-key-for-startup"]) and self.OPENAI_API_KEY:
+            self.FIREWORKS_API_KEY = self.OPENAI_API_KEY
+            self.FIREWORKS_BASE_URL = "https://api.openai.com/v1"
+            self.FIREWORKS_MODEL = "gpt-4o-mini"
 
         if not self.JWT_SECRET_KEY or self.JWT_SECRET_KEY == "dev-secret-key-change-me":
             env_secret = (
