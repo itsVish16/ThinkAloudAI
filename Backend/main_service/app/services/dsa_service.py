@@ -25,7 +25,12 @@ class DSAService:
         cache_key = f"dsa:questions:all:skip={skip}:limit={limit}"
         cached = await redis.get(cache_key)
         if cached:
-            return json.loads(cached)
+            try:
+                parsed = json.loads(cached)
+                if isinstance(parsed, list) and len(parsed) > 0:
+                    return parsed
+            except Exception:
+                pass
 
         result = await db.execute(
             select(DSAQuestion)

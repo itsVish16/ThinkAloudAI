@@ -243,6 +243,16 @@ async def main():
         await seed_behavioral_questions(db)
         await seed_pm_questions(db)
         await seed_aiml_questions(db)
+
+    # Invalidate Redis question cache
+    try:
+        from app.database import redis_client
+        async for key in redis_client.scan_iter("dsa:questions:all:*"):
+            await redis_client.delete(key)
+        logger.info("🧹 Redis question caches cleared.")
+    except Exception as e:
+        logger.warning(f"Could not clear Redis cache: {e}")
+
     logger.info("🎉 All question banks seeded successfully!")
 
 
