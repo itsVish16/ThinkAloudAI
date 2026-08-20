@@ -5,6 +5,9 @@ http://localhost, api.thinkaloudai.tech {
     handle /api/v1/users* {
         reverse_proxy user-service:8000
     }
+    handle /api/v1/admin* {
+        reverse_proxy user-service:8000
+    }
     handle /health/live {
         reverse_proxy user-service:8000
     }
