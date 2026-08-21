@@ -64,7 +64,7 @@ async def call_fast_bridge(
     first_token_time = None
     try:
         response = await fast_client.chat.completions.create(
-            model=settings.FAST_LLM_MODEL,
+            model=settings.fast_llm_model,
             messages=formatted,
             max_tokens=settings.FAST_LLM_MAX_TOKENS,
             temperature=0.3,
@@ -123,7 +123,7 @@ async def call_llm(
 
     try:
         response = await main_client.chat.completions.create(
-            model=settings.MAIN_LLM_MODEL,
+            model=settings.main_llm_model,
             messages=formatted_messages,
             temperature=0.4,
             max_tokens=1024,
@@ -242,7 +242,7 @@ async def stream_dual_llm(
         formatted_messages = [{"role": "system", "content": system_prompt}] + messages
         try:
             response = await main_client.chat.completions.create(
-                model=settings.MAIN_LLM_MODEL,
+                model=settings.main_llm_model,
                 messages=formatted_messages,
                 temperature=0.4,
                 max_tokens=1024,
@@ -351,7 +351,7 @@ async def evaluate_llm(
     raw_json = ""
     try:
         response = await main_client.chat.completions.create(
-            model=settings.MAIN_LLM_MODEL,
+            model=settings.main_llm_model,
             messages=formatted_messages,
             temperature=0.0,
             max_tokens=1024,

@@ -101,6 +101,20 @@ class Config(BaseSettings):
         return self.MAIN_LLM_BASE_URL or self.SARVAM_BASE_URL or self.LLM_BASE_URL
 
     @property
+    def main_llm_model(self) -> str:
+        model = self.MAIN_LLM_MODEL or self.SARVAM_MODEL or "sarvam-105b"
+        if "sarvam.ai" in self.main_llm_url and model not in ("sarvam-105b", "sarvam-105b-conversations"):
+            return "sarvam-105b"
+        return model
+
+    @property
+    def fast_llm_model(self) -> str:
+        model = self.FAST_LLM_MODEL or self.SARVAM_MODEL or "sarvam-105b"
+        if "sarvam.ai" in self.fast_llm_url and model not in ("sarvam-105b", "sarvam-105b-conversations"):
+            return "sarvam-105b"
+        return model
+
+    @property
     def analysis_llm_key(self) -> str:
         return self.ANALYSIS_LLM_API_KEY or self.FIREWORKS_API_KEY or self.SARVAM_API_KEY or self.main_llm_key
 
