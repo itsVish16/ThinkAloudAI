@@ -520,7 +520,7 @@ async def entrypoint(ctx: agents.JobContext):
     def on_track_subscribed(track, publication, participant):
         from livekit import rtc
         if track.kind == rtc.TrackKind.KIND_VIDEO:
-            if publication.source == rtc.TrackSource.SOURCE_SCREEN_SHARE:
+            if getattr(publication, "source", None) == getattr(rtc.TrackSource, "SOURCE_SCREENSHARE", None):
                 logger.info("Screen share track subscribed! Starting background whiteboard vision task.")
                 asyncio.create_task(video_processing_task(track, agent, is_whiteboard=True))
             else:

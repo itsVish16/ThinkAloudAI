@@ -16,7 +16,7 @@ class Config(BaseSettings):
     # Sarvam AI Unified Config (TTS, STT, and LLM)
     SARVAM_API_KEY: Optional[str] = None
     SARVAM_BASE_URL: str = "https://api.sarvam.ai/v1"
-    SARVAM_MODEL: str = "gemma4"
+    SARVAM_MODEL: str = "sarvam-105b"
     SARVAM_TTS_MODEL: str = "bulbul:v3"
     SARVAM_TTS_SPEAKER: str = "shubh"
     SARVAM_TTS_LANGUAGE: str = "en-IN"
@@ -27,18 +27,18 @@ class Config(BaseSettings):
     SARVAM_STT_LANGUAGE: str = "en-IN"
     SARVAM_STT_URL: Optional[str] = None
 
-    # Single Fast LLM Mode (Defaults to Sarvam gemma4 for ultra low-latency)
+    # Single Fast LLM Mode (Defaults to Sarvam for ultra low-latency)
     DUAL_LLM_ENABLED: bool = False
 
     # Fast Responder LLM
     FAST_LLM_API_KEY: str = ""
-    FAST_LLM_MODEL: str = "gemma4"
+    FAST_LLM_MODEL: str = "sarvam-105b"
     FAST_LLM_BASE_URL: str = "https://api.sarvam.ai/v1"
     FAST_LLM_MAX_TOKENS: int = 60
 
-    # Main Reasoning LLM (Defaults to Sarvam gemma4)
+    # Main Reasoning LLM (Defaults to Sarvam sarvam-105b)
     MAIN_LLM_API_KEY: str = ""
-    MAIN_LLM_MODEL: str = "gemma4"
+    MAIN_LLM_MODEL: str = "sarvam-105b"
     MAIN_LLM_BASE_URL: str = "https://api.sarvam.ai/v1"
 
     # Fireworks AI / DeepSeek for Background Post-Interview Analysis & Grading
