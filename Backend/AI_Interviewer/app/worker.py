@@ -377,20 +377,17 @@ async def entrypoint(ctx: agents.JobContext):
     sarvam_key = (settings.SARVAM_API_KEY or os.getenv("SARVAM_API_KEY", "")).strip()
 
     if sarvam_key and not sarvam_key.startswith("<"):
-        logger.info(f"Initializing Sarvam AI STT ({settings.SARVAM_STT_MODEL}) and WebSocket TTS ({settings.SARVAM_TTS_MODEL}, speaker={settings.SARVAM_TTS_SPEAKER})")
+        logger.info(f"Initializing Sarvam Realtime STT (saaras:v3-realtime) and WebSocket TTS ({settings.SARVAM_TTS_MODEL}, speaker={settings.SARVAM_TTS_SPEAKER})")
+        from app.services.sarvam_stt import SarvamRealtimeSTT
         from livekit.plugins import sarvam
-        stt_kwargs = {
-            "api_key": sarvam_key,
-            "model": settings.SARVAM_STT_MODEL,
-            "language": settings.SARVAM_STT_LANGUAGE,
-            "mode": settings.SARVAM_STT_MODE,
-            "prompt": "",
-        }
-        if settings.SARVAM_STT_URL:
-            stt_kwargs["base_url"] = settings.SARVAM_STT_URL
-        if settings.SARVAM_STT_STREAMING_URL:
-            stt_kwargs["streaming_url"] = settings.SARVAM_STT_STREAMING_URL
-        stt = sarvam.STT(**stt_kwargs)
+        stt = SarvamRealtimeSTT(
+            api_key=sarvam_key,
+            language=settings.SARVAM_STT_LANGUAGE,
+            model="saaras:v3-realtime",
+            mode=settings.SARVAM_STT_MODE,
+            stream_type="balanced",
+            sample_rate=16000,
+        )
         tts = sarvam.TTS(
             api_key=sarvam_key,
             model=settings.SARVAM_TTS_MODEL,
