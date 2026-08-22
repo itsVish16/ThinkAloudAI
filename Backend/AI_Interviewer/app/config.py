@@ -15,8 +15,8 @@ class Config(BaseSettings):
 
     # Sarvam AI Unified Config (TTS, STT, and LLM)
     SARVAM_API_KEY: Optional[str] = None
-    SARVAM_BASE_URL: str = "https://api.sarvam.ai/v1"
-    SARVAM_MODEL: str = "sarvam-105b"
+    SARVAM_BASE_URL: str = "https://api.sarvam.ai/v2"
+    SARVAM_MODEL: str = "gemma4"
     SARVAM_TTS_MODEL: str = "bulbul:v3"
     SARVAM_TTS_SPEAKER: str = "shubh"
     SARVAM_TTS_LANGUAGE: str = "en-IN"
@@ -27,19 +27,19 @@ class Config(BaseSettings):
     SARVAM_STT_LANGUAGE: str = "en-IN"
     SARVAM_STT_URL: Optional[str] = None
 
-    # Single Fast LLM Mode (Defaults to Sarvam for ultra low-latency)
+    # Single Fast LLM Mode (Ultra low-latency using gemma4 without fillers)
     DUAL_LLM_ENABLED: bool = False
 
     # Fast Responder LLM
     FAST_LLM_API_KEY: str = ""
-    FAST_LLM_MODEL: str = "sarvam-105b"
-    FAST_LLM_BASE_URL: str = "https://api.sarvam.ai/v1"
+    FAST_LLM_MODEL: str = "gemma4"
+    FAST_LLM_BASE_URL: str = "https://api.sarvam.ai/v2"
     FAST_LLM_MAX_TOKENS: int = 60
 
-    # Main Reasoning LLM (Defaults to Sarvam sarvam-105b)
+    # Main Reasoning LLM (Defaults to Sarvam gemma4)
     MAIN_LLM_API_KEY: str = ""
-    MAIN_LLM_MODEL: str = "sarvam-105b"
-    MAIN_LLM_BASE_URL: str = "https://api.sarvam.ai/v1"
+    MAIN_LLM_MODEL: str = "gemma4"
+    MAIN_LLM_BASE_URL: str = "https://api.sarvam.ai/v2"
 
     # Fireworks AI / DeepSeek for Background Post-Interview Analysis & Grading
     FIREWORKS_API_KEY: str = ""
@@ -52,8 +52,8 @@ class Config(BaseSettings):
 
     # Legacy fallback LLM Settings (OpenAI-compatible)
     LLM_API_KEY: str = ""
-    LLM_MODEL: str = "sarvam-105b"
-    LLM_BASE_URL: str = "https://api.sarvam.ai/v1"
+    LLM_MODEL: str = "gemma4"
+    LLM_BASE_URL: str = "https://api.sarvam.ai/v2"
 
     # External User Service Config
     USER_SERVICE_URL: str = "http://localhost:8000"
@@ -86,25 +86,21 @@ class Config(BaseSettings):
 
     @property
     def fast_llm_key(self) -> str:
-        return self.FAST_LLM_API_KEY or self.FIREWORKS_API_KEY or self.SARVAM_API_KEY or self.LLM_API_KEY or "dummy_key"
+        return self.FAST_LLM_API_KEY or self.SARVAM_API_KEY or self.LLM_API_KEY or "dummy_key"
 
     @property
     def fast_llm_url(self) -> str:
-        if self.FAST_LLM_BASE_URL and self.FAST_LLM_BASE_URL != "https://api.sarvam.ai/v1":
-            return self.FAST_LLM_BASE_URL
-        if self.FAST_LLM_API_KEY:
-            return self.FAST_LLM_BASE_URL or "https://api.sarvam.ai/v1"
-        if self.FIREWORKS_API_KEY:
-            return "https://api.fireworks.ai/inference/v1"
-        return self.SARVAM_BASE_URL or self.LLM_BASE_URL
+        url = self.FAST_LLM_BASE_URL or self.SARVAM_BASE_URL or self.LLM_BASE_URL
+        if "sarvam.ai" in url:
+            if self.fast_llm_model in ("gemma4", "glm5.2"):
+                return "https://api.sarvam.ai/v2"
+            elif self.fast_llm_model in ("sarvam-105b", "sarvam-105b-conversations"):
+                return "https://api.sarvam.ai/v1"
+        return url
 
     @property
     def fast_llm_model(self) -> str:
-        if self.FAST_LLM_MODEL and self.FAST_LLM_MODEL not in ("gemma4", "sarvam-105b"):
-            return self.FAST_LLM_MODEL
-        if "fireworks.ai" in self.fast_llm_url:
-            return "accounts/fireworks/models/llama-v3p1-8b-instruct"
-        return "sarvam-105b"
+        return self.FAST_LLM_MODEL or self.SARVAM_MODEL or "gemma4"
 
     @property
     def main_llm_key(self) -> str:
@@ -112,18 +108,21 @@ class Config(BaseSettings):
 
     @property
     def main_llm_url(self) -> str:
-        return self.MAIN_LLM_BASE_URL or self.SARVAM_BASE_URL or self.LLM_BASE_URL
+        url = self.MAIN_LLM_BASE_URL or self.SARVAM_BASE_URL or self.LLM_BASE_URL
+        if "sarvam.ai" in url:
+            if self.main_llm_model in ("gemma4", "glm5.2"):
+                return "https://api.sarvam.ai/v2"
+            elif self.main_llm_model in ("sarvam-105b", "sarvam-105b-conversations"):
+                return "https://api.sarvam.ai/v1"
+        return url
 
     @property
     def main_llm_model(self) -> str:
-        model = self.MAIN_LLM_MODEL or self.SARVAM_MODEL or "sarvam-105b"
-        if "sarvam.ai" in self.main_llm_url and model not in ("sarvam-105b", "sarvam-105b-conversations"):
-            return "sarvam-105b"
-        return model
+        return self.MAIN_LLM_MODEL or self.SARVAM_MODEL or "gemma4"
 
     @property
     def is_dual_llm_enabled(self) -> bool:
-        return self.DUAL_LLM_ENABLED or bool(self.FIREWORKS_API_KEY or self.FAST_LLM_API_KEY)
+        return self.DUAL_LLM_ENABLED
 
     @property
     def analysis_llm_key(self) -> str:
