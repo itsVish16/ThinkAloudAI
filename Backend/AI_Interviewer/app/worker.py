@@ -69,6 +69,34 @@ def serialize_state_safely(state: dict) -> dict:
     return clean_state
 
 
+def clean_display_name(raw_name: Optional[str]) -> str:
+    import re
+    if not raw_name:
+        return "Candidate"
+    raw_name = str(raw_name).strip()
+    if "@" in raw_name:
+        raw_name = raw_name.split("@")[0]
+    cleaned = re.sub(r"\d+", "", raw_name).strip()
+    cleaned = re.sub(r"[._\-+]+", " ", cleaned).strip()
+    cleaned = re.sub(r"([a-z])([A-Z])", r"\1 \2", cleaned)
+    
+    common_surnames = [
+        "saini", "kumar", "singh", "sharma", "gupta", "verma", "patel", "shah", 
+        "reddy", "rao", "mehta", "jain", "das", "roy", "sen", "mishra", "joshi", 
+        "bhat", "nair", "khan", "ali", "ahmed", "smith", "johnson", "williams"
+    ]
+    if " " not in cleaned and len(cleaned) > 5:
+        lower = cleaned.lower()
+        for surname in common_surnames:
+            if lower.endswith(surname) and len(lower) > len(surname):
+                first = lower[:-len(surname)]
+                cleaned = f"{first} {surname}"
+                break
+
+    cleaned = cleaned.title().strip()
+    return cleaned or "Candidate"
+
+
 class InterviewAgent(Agent):
     def __init__(self, room, room_id: str, candidate_name: str, user_id: str, interview_type: str, ai_selected_questions: list = None, session_data: dict = None):
         super().__init__(
@@ -78,7 +106,7 @@ class InterviewAgent(Agent):
         )
         self.room = room
         self.room_id = room_id
-        self.candidate_name = candidate_name
+        self.candidate_name = clean_display_name(candidate_name)
         self.user_id = user_id
         self.interview_type = interview_type
         self.turn_lock = asyncio.Lock()

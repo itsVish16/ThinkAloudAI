@@ -82,6 +82,34 @@ async def get_interview_types():
     }
 
 
+def clean_display_name(raw_name: Optional[str]) -> str:
+    import re
+    if not raw_name:
+        return "Candidate"
+    raw_name = str(raw_name).strip()
+    if "@" in raw_name:
+        raw_name = raw_name.split("@")[0]
+    cleaned = re.sub(r"\d+", "", raw_name).strip()
+    cleaned = re.sub(r"[._\-+]+", " ", cleaned).strip()
+    cleaned = re.sub(r"([a-z])([A-Z])", r"\1 \2", cleaned)
+    
+    common_surnames = [
+        "saini", "kumar", "singh", "sharma", "gupta", "verma", "patel", "shah", 
+        "reddy", "rao", "mehta", "jain", "das", "roy", "sen", "mishra", "joshi", 
+        "bhat", "nair", "khan", "ali", "ahmed", "smith", "johnson", "williams"
+    ]
+    if " " not in cleaned and len(cleaned) > 5:
+        lower = cleaned.lower()
+        for surname in common_surnames:
+            if lower.endswith(surname) and len(lower) > len(surname):
+                first = lower[:-len(surname)]
+                cleaned = f"{first} {surname}"
+                break
+
+    cleaned = cleaned.title().strip()
+    return cleaned or "Candidate"
+
+
 @router.post(
     "/token", 
     response_model=TokenResponse,
@@ -96,7 +124,8 @@ async def get_token(
     payload: TokenRequest,
     current_user: dict = Depends(get_current_user)
 ):
-    username = current_user.get("username", "Candidate")
+    raw_name = current_user.get("name") or current_user.get("full_name") or current_user.get("first_name") or current_user.get("username", "Candidate")
+    username = clean_display_name(raw_name)
     user_id = current_user.get("user_id", "guest_user")
     email = current_user.get("email", "unknown@thinkaloudai.tech")
 
