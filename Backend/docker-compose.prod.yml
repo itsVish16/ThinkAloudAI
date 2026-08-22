@@ -350,6 +350,7 @@ services:
       SARVAM_API_KEY: ${SARVAM_API_KEY:-}
       FAST_LLM_API_KEY: ${FAST_LLM_API_KEY:-}
       MAIN_LLM_API_KEY: ${MAIN_LLM_API_KEY:-}
+      FIREWORKS_API_KEY: ${FIREWORKS_API_KEY:-}
       OPIK_API_KEY: ${OPIK_API_KEY:-}
     depends_on:
       postgres:

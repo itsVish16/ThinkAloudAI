@@ -227,7 +227,7 @@ async def stream_dual_llm(
     3. The stream_queue receives fast tokens immediately, then seamlessly stitches
        Main LLM's deep technical reasoning without audible gaps.
     """
-    if not settings.DUAL_LLM_ENABLED:
+    if not settings.is_dual_llm_enabled:
         return await call_llm(messages, system_prompt, stream_queue, opik_trace_id, metrics=metrics)
 
     start_time = time.time()

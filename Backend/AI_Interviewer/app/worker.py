@@ -714,31 +714,25 @@ async def entrypoint(ctx: agents.JobContext):
 
     # Greets the user immediately if it's a new session
     if not agent.state["messages"]:
-        logger.info("Session is new (no messages). Waiting 1.5 seconds for client connection stability...")
-        await asyncio.sleep(1.5)
-        logger.info("Generating initial greeting...")
-        queue = asyncio.Queue()
-        agent.state["stream_queue"] = queue
-        try:
-            speech_handle = session.say(queue_generator(queue))
-        except RuntimeError as e:
-            logger.warning(f"Could not say initial greeting because session ended: {e}")
-            return
+        logger.info("Session is new (no messages). Waiting 1.0 second for client connection stability...")
+        await asyncio.sleep(1.0)
+        logger.info("Delivering direct initial greeting...")
 
-        # Seed with a clean user entry message
-        agent.state["messages"].append({"role": "user", "content": f"Hi Aarav, I am {agent.candidate_name} and I have joined the interview room."})
+        norm_type = agent.interview_type.replace("_", " ").title()
+        if "Dsa" in norm_type:
+            norm_type = "Data Structures and Algorithms"
 
+        greeting_text = (
+            f"Hi {agent.candidate_name}! Welcome, I am Aarav, your technical interviewer today from ThinkAloudAI. "
+            f"I will be conducting your {norm_type} session. Before we begin, can you hear and see me clearly?"
+        )
+
+        agent.state["messages"] = [{"role": "assistant", "content": greeting_text}]
         agent.state["ai_selected_questions"] = agent.ai_selected_questions
         agent.state["latest_code"] = agent.latest_code
         agent.state["latest_execution"] = agent.latest_execution
 
-        updated_state = await agent.interview_agent.ainvoke(agent.state)
-        agent.state = updated_state
-        
-        # Prepare state copy without the non-serializable queue for Postgres persistence
-        state_to_save = agent.state.copy()
-        state_to_save.pop("stream_queue", None)
-
+        state_to_save = serialize_state_safely(agent.state)
         await save_interview_session(
             session_id=agent.room_id,
             user_id=agent.user_id,
@@ -747,7 +741,12 @@ async def entrypoint(ctx: agents.JobContext):
             stage=agent.state["stage"],
             state_data=state_to_save
         )
-        await speech_handle
+
+        try:
+            await session.say(greeting_text)
+        except RuntimeError as e:
+            logger.warning(f"Could not say initial greeting because session ended: {e}")
+            return
     else:
         logger.info(f"Session is already existing with {len(agent.state['messages'])} messages.")
         # If the last message was from the assistant, replay it so the user knows we are connected
