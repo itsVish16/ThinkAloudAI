@@ -383,11 +383,13 @@ async def entrypoint(ctx: agents.JobContext):
             "api_key": sarvam_key,
             "model": settings.SARVAM_STT_MODEL,
             "language": settings.SARVAM_STT_LANGUAGE,
-            "mode": "transcribe",
+            "mode": settings.SARVAM_STT_MODE,
             "prompt": "",
         }
         if settings.SARVAM_STT_URL:
             stt_kwargs["base_url"] = settings.SARVAM_STT_URL
+        if settings.SARVAM_STT_STREAMING_URL:
+            stt_kwargs["streaming_url"] = settings.SARVAM_STT_STREAMING_URL
         stt = sarvam.STT(**stt_kwargs)
         tts = sarvam.TTS(
             api_key=sarvam_key,

@@ -23,9 +23,11 @@ class Config(BaseSettings):
     SARVAM_TTS_PACE: float = 1.0
     SARVAM_TTS_SAMPLE_RATE: int = 22050
     SARVAM_TTS_WS_URL: str = "wss://api.sarvam.ai/text-to-speech/ws"
-    SARVAM_STT_MODEL: str = "saarika:v2.5"
+    SARVAM_STT_MODEL: str = "saaras:v3"
+    SARVAM_STT_MODE: str = "transcribe"
     SARVAM_STT_LANGUAGE: str = "en-IN"
     SARVAM_STT_URL: Optional[str] = None
+    SARVAM_STT_STREAMING_URL: str = "wss://api.sarvam.ai/speech-to-text/ws"
 
     # Single Fast LLM Mode (Ultra low-latency using gemma4 without fillers)
     DUAL_LLM_ENABLED: bool = False
