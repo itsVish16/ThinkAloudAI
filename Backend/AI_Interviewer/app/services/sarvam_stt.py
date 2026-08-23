@@ -110,7 +110,7 @@ class SarvamRealtimeSpeechStream(stt.SpeechStream):
                                     text = getattr(message, "text", "")
                                     if text and text.strip():
                                         logger.debug(f"Sarvam STT Partial: '{text.strip()}'")
-                                        self._event_ch.send(
+                                        self._event_ch.send_nowait(
                                             stt.SpeechEvent(
                                                 type=stt.SpeechEventType.INTERIM_TRANSCRIPT,
                                                 alternatives=[
@@ -125,7 +125,7 @@ class SarvamRealtimeSpeechStream(stt.SpeechStream):
                                     text = getattr(message, "text", "")
                                     if text and text.strip():
                                         logger.info(f"Sarvam STT Final Transcript: '{text.strip()}'")
-                                        self._event_ch.send(
+                                        self._event_ch.send_nowait(
                                             stt.SpeechEvent(
                                                 type=stt.SpeechEventType.FINAL_TRANSCRIPT,
                                                 alternatives=[
@@ -137,11 +137,11 @@ class SarvamRealtimeSpeechStream(stt.SpeechStream):
                                             )
                                         )
                                 elif event in ("speech.start", "vad.speech_start"):
-                                    self._event_ch.send(
+                                    self._event_ch.send_nowait(
                                         stt.SpeechEvent(type=stt.SpeechEventType.START_OF_SPEECH)
                                     )
                                 elif event in ("speech.end", "vad.speech_end"):
-                                    self._event_ch.send(
+                                    self._event_ch.send_nowait(
                                         stt.SpeechEvent(type=stt.SpeechEventType.END_OF_SPEECH)
                                     )
                                 elif event == "error":
