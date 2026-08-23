@@ -8,8 +8,9 @@ from livekit.agents import (
     APIConnectOptions,
     APIConnectionError,
     stt,
-    utils,
 )
+from livekit.agents.types import NOT_GIVEN, NotGivenOr
+from livekit.agents.utils import AudioBuffer, is_given
 from sarvamai import (
     AsyncSarvamAI,
     RealtimeAudioInput,
@@ -202,10 +203,10 @@ class SarvamRealtimeSTT(stt.STT):
     def stream(
         self,
         *,
-        language: utils.NotGivenOr[str] = utils.NOT_GIVEN,
+        language: NotGivenOr[str] = NOT_GIVEN,
         conn_options: APIConnectOptions = DEFAULT_API_CONNECT_OPTIONS,
     ) -> stt.SpeechStream:
-        resolved_lang = language if utils.is_given(language) else self._language
+        resolved_lang = language if is_given(language) else self._language
         return SarvamRealtimeSpeechStream(
             stt_instance=self,
             api_key=self._api_key,
@@ -219,12 +220,12 @@ class SarvamRealtimeSTT(stt.STT):
 
     async def _recognize_impl(
         self,
-        buffer: utils.AudioBuffer,
+        buffer: AudioBuffer,
         *,
-        language: utils.NotGivenOr[str] = utils.NOT_GIVEN,
+        language: NotGivenOr[str] = NOT_GIVEN,
         conn_options: APIConnectOptions,
     ) -> stt.SpeechEvent:
-        resolved_lang = language if utils.is_given(language) else self._language
+        resolved_lang = language if is_given(language) else self._language
         wav_bytes = rtc.combine_audio_frames(buffer).to_wav_bytes()
         client = AsyncSarvamAI(api_subscription_key=self._api_key)
         resp = await client.speech_to_text.transcribe(
