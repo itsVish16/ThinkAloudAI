@@ -742,10 +742,12 @@ async def entrypoint(ctx: agents.JobContext):
         )
 
         try:
-            await session.say(greeting_text)
-        except RuntimeError as e:
-            logger.warning(f"Could not say initial greeting because session ended: {e}")
-            return
+            logger.info(f"Speaking initial greeting to candidate: '{greeting_text}'")
+            speech_handle = session.say(greeting_text)
+            await speech_handle
+            logger.info("Initial greeting delivered successfully.")
+        except Exception as e:
+            logger.warning(f"Could not say initial greeting: {e}", exc_info=True)
     else:
         logger.info(f"Session is already existing with {len(agent.state['messages'])} messages.")
         # If the last message was from the assistant, replay it so the user knows we are connected
