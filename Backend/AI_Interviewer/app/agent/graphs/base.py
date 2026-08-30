@@ -426,9 +426,8 @@ async def evaluate_and_route(state: InterviewState) -> Dict[str, Any]:
         "system_design": [InterviewStage.SYSTEM_DESIGN_DEEP_DIVE.value],
     }
 
-    is_question_finished = trigger_next_q or (
-        current_stage in question_end_stages.get(normalized_type, []) and should_advance
-    )
+    allowed_end_stages = question_end_stages.get(normalized_type, [])
+    is_question_finished = (current_stage in allowed_end_stages) and (should_advance or trigger_next_q)
 
     if is_question_finished and not is_last_question:
         if normalized_type == "dsa":

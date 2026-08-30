@@ -235,7 +235,7 @@ EVALUATOR_RULES = {
     
     "dsa_presentation": "Advance to dsa_approach when candidate confirms they understand the problem or begins discussing a solution.",
     "dsa_approach": "Advance to dsa_coding when candidate has articulated an approach and Big-O complexity, and interviewer invites them to code.",
-    "dsa_coding": "Advance to dsa_testing when candidate completes coding and runs/submits their solution or asks to test.",
+    "dsa_coding": "Advance to dsa_testing ONLY when candidate finishes coding and explicitly runs/submits their solution or asks to test.",
     "dsa_testing": "When test cases have been evaluated and time/space complexity discussed: if there is a 2nd question, set trigger_next_question=True. If this is the final question, advance to candidate_qa.",
     
     "system_design_requirements": "Advance to system_design_hld when functional/non-functional requirements and scale estimates are established.",
@@ -278,7 +278,8 @@ EXECUTION RESULTS:
 
 Evaluate the most recent turn. Should we advance to the next interview stage?
 - Set objective_met = true ONLY if the current stage goal has been genuinely satisfied according to the rule above. Do NOT rush through stages.
-- If the candidate has solved the current problem and passed all test cases, set trigger_next_question = true.
+- In coding stages (dsa_coding), the candidate is actively writing code. DO NOT advance to dsa_testing unless the candidate explicitly indicates they are ready, asks to test, or runs/submits their code.
+- Set trigger_next_question = true ONLY when we are in a testing or final follow-up stage (e.g. dsa_testing or behavioral_followup) and all discussions for the current problem/scenario are completely concluded.
 - If the stage is wrap_up or the time limit is reached, set should_end = true.
 """
 

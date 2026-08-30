@@ -134,6 +134,14 @@ export const DSAInterview: React.FC<DSAInterviewProps> = ({ questionId, template
   const [isMuted, setIsMuted] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(60 * 60);
   const [code, setCode] = useState('');
+  const [codeMap, setCodeMap] = useState<Record<string, string>>({});
+
+  const updateCode = (newCode: string) => {
+    setCode(newCode);
+    if (question) {
+      setCodeMap((prev) => ({ ...prev, [`${question.id}_${language}`]: newCode }));
+    }
+  };
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -148,10 +156,16 @@ export const DSAInterview: React.FC<DSAInterviewProps> = ({ questionId, template
   useEffect(() => {
     async function loadCode() {
       if (question) {
+        const cacheKey = `${question.id}_${language}`;
+        if (codeMap[cacheKey] !== undefined) {
+          setCode(codeMap[cacheKey]);
+          return;
+        }
         try {
           const submission = await getLatestSubmission(question.id, language);
           if (submission && submission.code) {
             setCode(submission.code);
+            setCodeMap((prev) => ({ ...prev, [cacheKey]: submission.code }));
             setSubmissionStatus(submission.status);
             return;
           }
@@ -160,18 +174,19 @@ export const DSAInterview: React.FC<DSAInterviewProps> = ({ questionId, template
         }
 
         // Fallback to starter code
+        let starter = 'class Solution:\n    def solve(self):\n        pass';
         if (language === 'python' && question.python_starter_code) {
-          setCode(question.python_starter_code);
+          starter = question.python_starter_code;
         } else if (language === 'cpp' && question.cpp_starter_code) {
-          setCode(question.cpp_starter_code);
-        } else {
-          setCode('class Solution:\n    def solve(self):\n        pass');
+          starter = question.cpp_starter_code;
         }
+        setCode(starter);
+        setCodeMap((prev) => ({ ...prev, [cacheKey]: starter }));
         setSubmissionStatus(null);
       }
     }
     loadCode();
-  }, [question, language]);
+  }, [question?.id, language]);
   const [activeTab, setActiveTab] = useState<'problem' | 'editorial'>('problem');
   const [testTab, setTestTab] = useState<'case1' | 'case2' | 'case3'>('case1');
   const [consoleOutput, setConsoleOutput] = useState<{ status: string, runtime?: string, memory?: string, raw?: any } | null>(null);
@@ -514,7 +529,7 @@ export const DSAInterview: React.FC<DSAInterviewProps> = ({ questionId, template
                     language={language}
                     theme="vs-dark"
                     value={code}
-                    onChange={(v) => setCode(v || '')}
+                    onChange={(v) => updateCode(v || '')}
                     options={{ minimap: { enabled: false }, fontSize: 13, scrollBeyondLastLine: false, padding: { top: 16 }, automaticLayout: true }}
                   />
                 </div>
