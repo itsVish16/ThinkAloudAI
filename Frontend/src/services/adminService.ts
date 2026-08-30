@@ -139,11 +139,96 @@ export interface InterviewSessionAudit {
     recommended_topics?: string[];
     detailed_metrics?: Record<string, number>;
   };
+  state_data?: any;
   transcript?: Array<{
     role: 'interviewer' | 'candidate';
     content: string;
     created_at?: string;
   }>;
+}
+
+export interface FastLLMMetrics {
+  ttft_ms?: number;
+  total_ms?: number;
+  output?: string;
+}
+
+export interface MainLLMMetrics {
+  ttft_ms?: number;
+  total_ms?: number;
+}
+
+export interface TurnEvaluationMetrics {
+  score?: number;
+  objective_met?: boolean;
+  latency_ms?: number;
+  reasoning?: string;
+}
+
+export interface TurnMetricItem {
+  turn_number: number;
+  stage?: string;
+  user_text?: string;
+  response_text?: string;
+  e2e_response_latency_ms?: number;
+  total_turn_duration_ms?: number;
+  fast_llm?: FastLLMMetrics;
+  main_llm?: MainLLMMetrics;
+  stt_latency_ms?: number;
+  tts_latency_ms?: number;
+  evaluation?: TurnEvaluationMetrics;
+  timestamp?: string;
+}
+
+export interface TelemetrySummary {
+  total_turns: number;
+  avg_e2e_latency_ms: number;
+  min_e2e_latency_ms: number;
+  max_e2e_latency_ms: number;
+  avg_main_llm_ttft_ms: number;
+  avg_fast_llm_ttft_ms: number;
+  avg_turn_duration_ms: number;
+}
+
+export interface SlowestTurnItem {
+  session_id: string;
+  candidate_name?: string;
+  stage?: string;
+  turn_number: number;
+  e2e_latency_ms: number;
+  main_llm_ttft_ms?: number;
+  user_text?: string;
+}
+
+export interface RecentSessionTelemetry {
+  session_id: string;
+  candidate_name?: string;
+  interview_type?: string;
+  stage?: string;
+  total_turns: number;
+  avg_e2e_latency_ms: number;
+  created_at?: string;
+}
+
+export interface AdminTelemetryOverviewResponse {
+  analyzed_sessions_count: number;
+  overall_avg_e2e_latency_ms: number;
+  overall_avg_main_ttft_ms: number;
+  overall_avg_fast_ttft_ms: number;
+  slowest_turns: SlowestTurnItem[];
+  recent_sessions: RecentSessionTelemetry[];
+}
+
+export interface AdminSessionMetricsResponse {
+  session_id: string;
+  candidate_name?: string;
+  user_email?: string;
+  interview_type?: string;
+  stage?: string;
+  created_at?: string;
+  updated_at?: string;
+  telemetry_summary: TelemetrySummary;
+  turns: TurnMetricItem[];
 }
 
 export const adminService = {
@@ -400,6 +485,21 @@ export const adminService = {
       method: 'DELETE'
     });
     if (!res.ok) throw new Error('Failed to delete interview session');
+    return res.json();
+  },
+
+  // -------------------------------------------------------------
+  // 4. Latency & Telemetry Deep-Dive (AI_Interviewer)
+  // -------------------------------------------------------------
+  async getTelemetryOverview(limit = 50): Promise<AdminTelemetryOverviewResponse> {
+    const res = await apiClient.fetchWithAuth(`${API_BASE_URL}/api/admin/telemetry/overview?limit=${limit}`);
+    if (!res.ok) throw new Error('Failed to load global telemetry overview');
+    return res.json();
+  },
+
+  async getSessionMetrics(sessionId: string): Promise<AdminSessionMetricsResponse> {
+    const res = await apiClient.fetchWithAuth(`${API_BASE_URL}/api/admin/interviews/${sessionId}/metrics`);
+    if (!res.ok) throw new Error(`Failed to load metrics for session ${sessionId}`);
     return res.json();
   }
 };

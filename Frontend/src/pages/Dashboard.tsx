@@ -59,11 +59,6 @@ import { getSessions, deleteSession } from '../services/chatService';
 import { getRoadmaps, deleteRoadmap, type Roadmap } from '../services/roadmapService';
 import { RoadmapViewer } from '../components/chat/RoadmapViewer';
 import { generateLanggraphToken, getUserProfile } from '../services/langgraphService';
-import {
-  Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
-  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip,
-  BarChart, Bar, LineChart, Line, CartesianGrid
-} from 'recharts';
 
 // Mock data removed, replaced with live fetched state inside component
 
@@ -660,7 +655,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, user, onLogout
               </div>
               <div className="streak-tag-badge">
                 <Lightning size={14} className="streak-icon" />
-                <span>{langgraphProfile?.stats?.current_streak || 0} Days Streak</span>
+                <span>{langgraphProfile?.current_streak ?? langgraphProfile?.stats?.current_streak ?? 0} Day{(langgraphProfile?.current_streak ?? langgraphProfile?.stats?.current_streak ?? 0) === 1 ? '' : 's'} Streak</span>
               </div>
             </div>
 

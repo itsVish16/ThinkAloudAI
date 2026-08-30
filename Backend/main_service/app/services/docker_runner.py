@@ -24,20 +24,48 @@ def parse_cpp_error(err_msg: str, test_harness: str) -> str:
         return f"/home/user/main.cpp:{max(1, line_num - offset)}"
     return re.sub(r'/home/user/main.cpp:(\d+)', replace_cpp_line, err_msg)
 
-def compare(actual, expected, mode):
-    if mode == "exact":
-        return actual == expected
-    if mode == "unordered":
-        if isinstance(actual, list) and isinstance(expected, list):
-            return sorted(actual) == sorted(expected)
-        return False
-    if mode == "float_tolerance":
+def normalize_val(v):
+    """Recursively normalizes nested lists and tuples for order-independent comparison."""
+    if isinstance(v, (list, tuple)):
+        normalized_items = [normalize_val(x) for x in v]
         try:
-            return abs(float(actual) - float(expected)) < 1e-6
-        except:
+            return sorted(normalized_items, key=lambda x: str(x))
+        except Exception:
+            return normalized_items
+    if isinstance(v, set):
+        try:
+            return sorted([normalize_val(x) for x in v], key=lambda x: str(x))
+        except Exception:
+            return list(v)
+    if isinstance(v, dict):
+        return {k: normalize_val(val) for k, val in v.items()}
+    return v
+
+def compare(actual, expected, mode, mutated_arg=None):
+    # If function mutated in-place and returned None, use the mutated arg
+    if actual is None and mutated_arg is not None:
+        actual = mutated_arg
+
+    if mode == "unordered" or mode == "unordered_nested":
+        if isinstance(actual, (list, tuple)) and isinstance(expected, (list, tuple)):
+            return normalize_val(actual) == normalize_val(expected)
+        return actual == expected
+
+    if mode == "float_tolerance" or isinstance(expected, float):
+        try:
+            return abs(float(actual) - float(expected)) < 1e-5
+        except Exception:
             return False
+
     if mode == "any_of":
-        return actual in expected
+        if isinstance(expected, list):
+            return actual in expected or normalize_val(actual) in [normalize_val(e) for e in expected]
+        return actual == expected
+
+    # Default exact comparison
+    if isinstance(actual, (list, tuple)) and isinstance(expected, (list, tuple)):
+        return actual == expected
+
     return actual == expected
 
 def run_code_in_docker(code: str, function_name: str, test_cases_json: str, language: str = "python", test_harness: str = None) -> dict:
@@ -53,9 +81,20 @@ def run_code_in_docker(code: str, function_name: str, test_cases_json: str, lang
 
     try:
         schema = json.loads(test_cases_json)
-        test_cases = schema.get("cases", [])
-        comparison_mode = schema.get("comparison", "exact")
-    except json.JSONDecodeError:
+        # Handle cases where schema is a dict with 'cases' or fallback
+        if isinstance(schema, dict):
+            test_cases = schema.get("cases", [])
+            comparison_mode = schema.get("comparison", "exact")
+            # If function_name in schema is given and not 'solution', default to schema function_name
+            if not function_name or function_name == "solution":
+                function_name = schema.get("function_name", function_name)
+        elif isinstance(schema, list):
+            test_cases = schema
+            comparison_mode = "exact"
+        else:
+            test_cases = []
+            comparison_mode = "exact"
+    except Exception:
         return {
             "memory_used_kb": 0,
             "status": "Configuration Error",
@@ -76,6 +115,7 @@ def run_code_in_docker(code: str, function_name: str, test_cases_json: str, lang
 import json
 import time
 import sys
+import copy
 import traceback
 from typing import *
 
@@ -85,28 +125,57 @@ from typing import *
 test_cases = json.loads({test_cases_escaped})
 function_name = "{function_name}"
 
-solution_instance = None
-if 'Solution' in locals():
-    solution_instance = locals()['Solution']()
-
 results = []
 start_time = time.perf_counter()
 
 for tc in test_cases:
     try:
-        kwargs = tc.get('args', {{}})
+        # Create fresh instance per test case to avoid state leakage
+        solution_instance = None
+        if 'Solution' in locals():
+            solution_instance = locals()['Solution']()
+
+        raw_args = tc.get('args', {{}})
+        kwargs = copy.deepcopy(raw_args)
+        
+        func = None
         if solution_instance and hasattr(solution_instance, function_name):
             func = getattr(solution_instance, function_name)
         elif function_name in locals():
             func = locals()[function_name]
-        else:
-            results.append({{"output": None, "error": f"Function '{{function_name}}' not found."}})
+        elif solution_instance:
+            # Fallback to first public method on Solution
+            methods = [m for m in dir(solution_instance) if not m.startswith('_')]
+            if methods:
+                func = getattr(solution_instance, methods[0])
+
+        if not func:
+            results.append({{"output": None, "mutated": None, "error": f"Function '{{function_name}}' not found."}})
             continue
-            
-        result = func(**kwargs)
-        results.append({{"output": result, "error": None}})
+
+        # Try calling with keyword arguments, fallback to positional if user changed param names
+        try:
+            result = func(**kwargs)
+        except TypeError as te:
+            if "unexpected keyword argument" in str(te) or "positional argument" in str(te):
+                result = func(*kwargs.values())
+            else:
+                raise
+
+        # Capture in-place mutations (e.g. for sortColors, rotate, moveZeroes)
+        mutated = None
+        for key in ['nums', 'matrix', 'board', 'intervals']:
+            if key in kwargs and isinstance(kwargs[key], (list, dict)):
+                mutated = kwargs[key]
+                break
+        if mutated is None and len(kwargs) == 1:
+            first_val = next(iter(kwargs.values()))
+            if isinstance(first_val, (list, dict)):
+                mutated = first_val
+
+        results.append({{"output": result, "mutated": mutated, "error": None}})
     except Exception as e:
-        results.append({{"output": None, "error": traceback.format_exc()}})
+        results.append({{"output": None, "mutated": None, "error": traceback.format_exc()}})
 
 execution_time_ms = (time.perf_counter() - start_time) * 1000
 print(json.dumps({{"results": results, "time_ms": execution_time_ms}}))
@@ -195,7 +264,10 @@ print(json.dumps({{"results": results, "time_ms": execution_time_ms}}))
         cmd = "python3 /home/user/runner.py"
 
     try:
-        with Sandbox(api_key=settings.E2B_API_KEY) as sandbox:
+        create_kwargs = {}
+        if settings.E2B_API_KEY:
+            create_kwargs["api_key"] = settings.E2B_API_KEY
+        with Sandbox.create(**create_kwargs) as sandbox:
             sandbox.files.write(filename, runner_script)
             if language == "cpp":
                 sandbox.files.write("/home/user/main.cpp", cpp_code)
@@ -258,8 +330,10 @@ print(json.dumps({{"results": results, "time_ms": execution_time_ms}}))
                 err_msg = stderr.strip() or stdout.strip()
                 if language == "cpp":
                     err_msg = parse_cpp_error(err_msg, cpp_code)
+                elif language == "python" and err_msg:
+                    err_msg = parse_traceback(err_msg)
                 return {
-            "memory_used_kb": 0,
+                    "memory_used_kb": 0,
                     "status": "Runtime Error" if exit_code != 0 else "Sandbox Error",
                     "passed_tests": 0,
                     "total_tests": total_tests,
@@ -269,7 +343,7 @@ print(json.dumps({{"results": results, "time_ms": execution_time_ms}}))
                 
             if "compile_error" in out_data:
                 return {
-            "memory_used_kb": 0,
+                    "memory_used_kb": 0,
                     "status": "Compilation Error",
                     "passed_tests": 0,
                     "total_tests": total_tests,
@@ -277,6 +351,16 @@ print(json.dumps({{"results": results, "time_ms": execution_time_ms}}))
                     "execution_time_ms": 0.0
                 }
                 
+            if total_tests == 0:
+                return {
+                    "memory_used_kb": 0,
+                    "status": "Configuration Error",
+                    "passed_tests": 0,
+                    "total_tests": 0,
+                    "error_message": "No test cases configured.",
+                    "execution_time_ms": 0.0
+                }
+
             results = out_data.get("results", [])
             time_ms = out_data.get("time_ms", 0.0)
             
@@ -284,6 +368,8 @@ print(json.dumps({{"results": results, "time_ms": execution_time_ms}}))
             first_error = None
             
             for i, res in enumerate(results):
+                if i >= len(test_cases):
+                    break
                 tc = test_cases[i]
                 if res.get("error"):
                     if not first_error:
@@ -296,13 +382,15 @@ print(json.dumps({{"results": results, "time_ms": execution_time_ms}}))
                     continue
                     
                 actual = res.get("output")
+                mutated = res.get("mutated")
                 expected = tc.get("expected")
                 
-                if compare(actual, expected, comparison_mode):
+                if compare(actual, expected, comparison_mode, mutated_arg=mutated):
                     passed += 1
                 else:
                     if not first_error:
-                        first_error = f"Test {i+1} failed.\nInput: {tc.get('args')}\nExpected: {expected}\nGot: {actual}"
+                        got_display = actual if actual is not None else mutated
+                        first_error = f"Test {i+1} failed.\nInput: {tc.get('args')}\nExpected: {expected}\nGot: {got_display}"
                         
             status = "Accepted" if passed == total_tests else "Wrong Answer"
             if passed < total_tests and first_error and ("Exit code" in first_error or "Traceback" in first_error):

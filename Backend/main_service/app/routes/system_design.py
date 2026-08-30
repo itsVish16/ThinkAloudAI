@@ -40,10 +40,12 @@ async def create_question(
     return await SystemDesignService.create_question(request, db, redis)
 
 
-@router.post("/questions/{question_id}/submit", response_model=SystemDesignSubmitResponse, dependencies=[Depends(verify_jwt)])
+@router.post("/questions/{question_id}/submit", response_model=SystemDesignSubmitResponse)
 async def submit_system_design(
     question_id: int,
     request: SystemDesignSubmitRequest,
+    user: dict = Depends(verify_jwt),
     db: AsyncSession = Depends(get_db),
 ):
-    return await SystemDesignService.evaluate_submission(question_id, request, db)
+    user_id = str(user.get("id") or user.get("sub") or "authenticated_user")
+    return await SystemDesignService.evaluate_submission(question_id, request, db, user_id=user_id)

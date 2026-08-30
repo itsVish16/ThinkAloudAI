@@ -63,6 +63,8 @@ class TurnMetrics:
         self.first_audio_byte_time: Optional[float] = None
         self.playback_end_time: Optional[float] = None
         self.response_text: str = ""
+        self.stt_latency_ms: Optional[float] = None
+        self.tts_latency_ms: Optional[float] = None
 
         # Evaluator metrics
         self.eval_reasoning: Optional[str] = None
@@ -90,6 +92,36 @@ class TurnMetrics:
     def total_turn_duration_ms(self) -> float:
         end = self.playback_end_time or time.time()
         return round((end - self.turn_start_time) * 1000, 1)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Returns a serializable dictionary representation of the turn metrics."""
+        from datetime import datetime, UTC
+        return {
+            "turn_number": self.turn_number,
+            "stage": self.stage,
+            "user_text": self.user_text,
+            "response_text": self.response_text,
+            "e2e_response_latency_ms": self.e2e_response_latency_ms,
+            "total_turn_duration_ms": self.total_turn_duration_ms,
+            "fast_llm": {
+                "ttft_ms": self.fast_llm_ttft_ms,
+                "total_ms": self.fast_llm_total_ms,
+                "output": self.fast_llm_output,
+            },
+            "main_llm": {
+                "ttft_ms": self.main_llm_ttft_ms,
+                "total_ms": self.main_llm_total_ms,
+            },
+            "stt_latency_ms": self.stt_latency_ms,
+            "tts_latency_ms": self.tts_latency_ms,
+            "evaluation": {
+                "score": self.eval_score,
+                "objective_met": self.eval_objective_met,
+                "latency_ms": self.eval_latency_ms,
+                "reasoning": self.eval_reasoning,
+            },
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
 
     def _log_console_dashboard(self):
         fast_ttft_str = f"{self.fast_llm_ttft_ms:.0f} ms" if self.fast_llm_ttft_ms else "Skipped / N/A"

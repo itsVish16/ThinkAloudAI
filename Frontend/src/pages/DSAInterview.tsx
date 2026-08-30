@@ -16,6 +16,7 @@ import { getLatestSubmission, submitDSACode, runDSACode } from '../services/dsaS
 import { formatDescription } from '../utils/formatDescription';
 import { endInterview } from '../services/interviewService';
 import { apiClient } from '../services/apiClient';
+import { API_BASE_URL } from '../config/api';
 import '../styles/MockInterview.css';
 
 interface DSAInterviewProps {
@@ -34,17 +35,28 @@ const IDESync = ({ code, consoleOutput, onNextQuestion, onRevealProblem, onInter
 
   useEffect(() => {
     if (!localParticipant) return;
-    const timer = setTimeout(() => {
-      const payload = JSON.stringify({ type: "code_update", code });
-      localParticipant.publishData(new TextEncoder().encode(payload), { reliable: true });
+    const timer = setTimeout(async () => {
+      try {
+        const payload = JSON.stringify({ type: "code_update", code });
+        await localParticipant.publishData(new TextEncoder().encode(payload), { reliable: true });
+      } catch (err) {
+        console.warn("Failed to publish code update:", err);
+      }
     }, 1000);
     return () => clearTimeout(timer);
   }, [code, localParticipant]);
 
   useEffect(() => {
     if (!localParticipant || !consoleOutput) return;
-    const payload = JSON.stringify({ type: "code_execution", execution: consoleOutput, code });
-    localParticipant.publishData(new TextEncoder().encode(payload), { reliable: true });
+    const sendExec = async () => {
+      try {
+        const payload = JSON.stringify({ type: "code_execution", execution: consoleOutput, code });
+        await localParticipant.publishData(new TextEncoder().encode(payload), { reliable: true });
+      } catch (err) {
+        console.warn("Failed to publish execution output:", err);
+      }
+    };
+    sendExec();
   }, [consoleOutput, code, localParticipant]);
 
   useEffect(() => {
@@ -106,8 +118,8 @@ const AgentVisualizer = () => {
   );
 };
 
-export const DSAInterview: React.FC<DSAInterviewProps> = ({ questionId, templateId, templateName, accessToken, onNavigate }) => {
-  const API_URL = import.meta.env.VITE_API_URL || '';
+export const DSAInterview: React.FC<DSAInterviewProps> = ({ questionId, templateId, templateName, domain, role, accessToken, onNavigate }) => {
+  const API_URL = API_BASE_URL;
 
   const [questions, setQuestions] = useState<any[]>([]);
   const [questionIndex, setQuestionIndex] = useState(0);
@@ -120,7 +132,15 @@ export const DSAInterview: React.FC<DSAInterviewProps> = ({ questionId, template
 
   const [isCameraActive, setIsCameraActive] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
+  const [timeRemaining, setTimeRemaining] = useState(60 * 60);
   const [code, setCode] = useState('');
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTimeRemaining((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
   const [language, setLanguage] = useState('python');
   const [submissionStatus, setSubmissionStatus] = useState<string | null>(null);
 
@@ -173,16 +193,6 @@ export const DSAInterview: React.FC<DSAInterviewProps> = ({ questionId, template
   // LiveKit refs
   const roomRef = useRef<Room | null>(null);
 
-  const isAiCameraOn = false;
-  const [timeRemaining, setTimeRemaining] = useState(60 * 60);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setTimeRemaining((prev) => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
   // Connect to LiveKit Room API
   const handleConnect = async () => {
     try {
@@ -195,7 +205,13 @@ export const DSAInterview: React.FC<DSAInterviewProps> = ({ questionId, template
       const response = await apiClient.fetchWithAuth(`${API_URL}/api/token`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ room_name: roomName, interview_type: templateId || 'dsa' })
+        body: JSON.stringify({ 
+          room_name: roomName, 
+          interview_type: templateId || 'dsa',
+          question_ids: questionId ? [String(questionId)] : undefined,
+          domain,
+          role
+        })
       });
 
       if (!response.ok) throw new Error(`Server returned status ${response.status}`);
@@ -451,7 +467,7 @@ export const DSAInterview: React.FC<DSAInterviewProps> = ({ questionId, template
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
                       <span style={{ padding: '2px 8px', borderRadius: '12px', background: 'rgba(255, 161, 22, 0.1)', color: '#FFA116', fontSize: '0.75rem' }}>{question.difficulty}</span>
-                      <span style={{ padding: '2px 8px', borderRadius: '12px', background: '#222', color: '#aaa', fontSize: '0.75rem' }}>Hash Table</span>
+                      <span style={{ padding: '2px 8px', borderRadius: '12px', background: '#222', color: '#aaa', fontSize: '0.75rem' }}>{question.category || 'Algorithms'}</span>
                     </div>
 
                     <div className="prose-content" style={{ color: '#ccc', fontSize: '0.9rem', lineHeight: 1.6 }}>

@@ -172,11 +172,14 @@ async def get_token(
                     else:
                         ai_selected_questions = random.sample(sd_pool, min(1, len(sd_pool)))
         elif payload.interview_type in ["behavioral", "hr"]:
-            response = await http_client.get(f"{settings.MAIN_SERVICE_URL}/behavioral/questions?limit=2", timeout=5.0)
+            response = await http_client.get(f"{settings.MAIN_SERVICE_URL}/behavioral/questions?limit=6", timeout=5.0)
             if response.status_code == 200:
-                data = response.json()
-                if isinstance(data, list):
-                    ai_selected_questions = data
+                b_pool = response.json()
+                if isinstance(b_pool, list):
+                    if payload.question_ids:
+                        ai_selected_questions = [q for q in b_pool if str(q.get("id")) in payload.question_ids or q.get("id") in payload.question_ids]
+                    else:
+                        ai_selected_questions = random.sample(b_pool, min(3, len(b_pool)))
         elif payload.interview_type in ["product_management", "pm"]:
             response = await http_client.get(f"{settings.MAIN_SERVICE_URL}/pm/questions?limit=2", timeout=5.0)
             if response.status_code == 200:

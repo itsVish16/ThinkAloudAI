@@ -46,8 +46,11 @@ class CodeSubmissionOut(BaseModel):
     code: str
     language: str
     status: str
-    error_message: Optional[str]
+    error_message: Optional[str] = None
     is_submission: bool
+    passed_tests: Optional[int] = None
+    total_tests: Optional[int] = None
+    execution_time_ms: Optional[float] = None
     created_at: datetime.datetime
 
 class UserProblemStatusOut(BaseModel):
@@ -61,10 +64,9 @@ class UserProblemStatusOut(BaseModel):
 
 class RecommendationOut(BaseModel):
     id: int
-    user_id: str
-    recommended_item_type: str
-    recommended_item_id: int
-    reason: str
+    session_id: str
+    question_id: int
+    reason: Optional[str] = None
     created_at: datetime.datetime
 
     model_config = ConfigDict(from_attributes=True)

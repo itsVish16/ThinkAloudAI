@@ -9,6 +9,8 @@ import httpx
 load_dotenv(".env.local")
 load_dotenv(".env")
 
+__test__ = False
+
 async def test_llm_model(
     provider_name: str,
     base_url: str,

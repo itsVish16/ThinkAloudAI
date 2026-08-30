@@ -3,15 +3,42 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime, UTC
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy.orm import joinedload
 import sqlalchemy.exc
 
 from app.config import settings
 from app.models.base import Base
 from app.models.interview import UserProfileReplica, InterviewSession, InterviewQuestion, InterviewResponse, InterviewFeedback
 
+import re
+from urllib.parse import quote_plus, unquote_plus
+
+def get_normalized_db_url(raw_url: str) -> str:
+    if not raw_url:
+        return "postgresql+asyncpg://thinkaloud:thinkaloud_dev@localhost:5432/postgres"
+    url = raw_url.strip()
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    elif url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+
+    if "sslmode=require" in url and "ssl=" not in url:
+        url = url.replace("sslmode=require", "ssl=require")
+
+    match = re.match(r"^(postgresql\+asyncpg://)(.*)@([^@/]+(?::\d+)?(?:/.*)?)$", url)
+    if match:
+        proto, creds, rest = match.groups()
+        if ":" in creds:
+            u, p = creds.split(":", 1)
+            encoded_u = quote_plus(unquote_plus(u))
+            encoded_p = quote_plus(unquote_plus(p))
+            return f"{proto}{encoded_u}:{encoded_p}@{rest}"
+
+    return url
+
 # Database configuration
-DATABASE_URL = settings.DATABASE_URL
-engine = create_async_engine(DATABASE_URL, echo=False)
+DATABASE_URL = get_normalized_db_url(settings.DATABASE_URL)
+engine = create_async_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=1800, echo=False)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
 async def get_db():
@@ -29,21 +56,31 @@ async def ensure_db_exists(db_url: str):
     clean_url = db_url.replace("postgresql+asyncpg://", "postgresql://").replace("postgres://", "postgresql://")
     parsed = urlparse(clean_url)
     db_name = parsed.path.lstrip("/")
-    user = parsed.username or "thinkaloud"
-    password = parsed.password or "thinkaloud_prod_secure"
+    if "?" in db_name:
+        db_name = db_name.split("?")[0]
+    user = unquote_plus(parsed.username or "thinkaloud")
+    password = unquote_plus(parsed.password or "thinkaloud_prod_secure")
     host = parsed.hostname or "localhost"
     port = parsed.port or 5432
+    use_ssl = "ssl=" in db_url or "sslmode=" in db_url or "azure.com" in host
 
-    for _ in range(15):
+    if db_name.lower() == "postgres":
+        return
+
+    for attempt in range(1, 4):
         try:
-            conn = await asyncpg.connect(
-                user=user,
-                password=password,
-                host=host,
-                port=port,
-                database="postgres",
-                timeout=5
-            )
+            connect_kwargs = {
+                "user": user,
+                "password": password,
+                "host": host,
+                "port": port,
+                "database": "postgres",
+                "timeout": 5,
+            }
+            if use_ssl:
+                connect_kwargs["ssl"] = "require"
+
+            conn = await asyncpg.connect(**connect_kwargs)
             try:
                 exists = await conn.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", db_name)
                 if not exists:
@@ -68,19 +105,25 @@ async def init_db():
         # Add missing columns dynamically
         await conn.execute(text("ALTER TABLE interview_feedback ADD COLUMN IF NOT EXISTS detailed_metrics JSON;"))
 
-async def get_or_create_user_replica(session: AsyncSession, user_id: str, email: str = None, username: str = None):
-    stmt = select(UserProfileReplica).where(UserProfileReplica.id == user_id)
-    result = await session.execute(stmt)
-    user = result.scalar_one_or_none()
-    
-    if not user:
-        safe_email = email if email else "unknown@thinkaloudai.tech"
-        user = UserProfileReplica(id=user_id, email=safe_email, username=username)
-        session.add(user)
-        await session.flush()
-    return user
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from sqlalchemy.dialects.postgresql import insert
+async def get_or_create_user_replica(session: AsyncSession, user_id: str, email: str = None, username: str = None):
+    safe_email = email if email else "unknown@thinkaloudai.tech"
+    stmt = (
+        pg_insert(UserProfileReplica)
+        .values(id=str(user_id), email=safe_email, username=username)
+        .on_conflict_do_update(
+            index_elements=["id"],
+            set_={
+                "email": safe_email if email else UserProfileReplica.email,
+                "username": username if username else UserProfileReplica.username,
+            },
+        )
+        .returning(UserProfileReplica)
+    )
+    result = await session.execute(stmt)
+    await session.flush()
+    return result.scalar_one_or_none()
 
 async def save_interview_session(
     session_id: str,
@@ -106,7 +149,7 @@ async def save_interview_session(
                     difficulty = str(q_diff).capitalize()
         
         now = datetime.now(UTC).replace(tzinfo=None)
-        stmt = insert(InterviewSession).values(
+        stmt = pg_insert(InterviewSession).values(
             id=session_id,
             user_id=user_id,
             candidate_name=candidate_name,
@@ -131,7 +174,29 @@ async def save_interview_session(
         await session.execute(stmt)
         await session.commit()
 
-from sqlalchemy.orm import joinedload
+def compute_domain_weighted_score(interview_type: Optional[str], tech: Optional[float], comm: Optional[float], eng: Optional[float], detailed_metrics: Optional[Dict[str, Any]] = None) -> int:
+    if detailed_metrics and isinstance(detailed_metrics, dict) and detailed_metrics.get("overall_score") is not None:
+        try:
+            return round(float(detailed_metrics["overall_score"]))
+        except (ValueError, TypeError):
+            pass
+
+    t = tech or 0
+    c = comm or 0
+    e = eng or 0
+    i_type_clean = (interview_type or "").lower()
+    if any(k in i_type_clean for k in ["dsa", "swe", "coding"]):
+        return round(0.60 * t + 0.25 * c + 0.15 * e)
+    elif any(k in i_type_clean for k in ["system_design", "sd"]):
+        return round(0.55 * t + 0.30 * c + 0.15 * e)
+    elif any(k in i_type_clean for k in ["behavioral", "hr"]):
+        return round(0.20 * t + 0.70 * c + 0.10 * e)
+    elif any(k in i_type_clean for k in ["pm", "product"]):
+        return round(0.55 * t + 0.35 * c + 0.10 * e)
+    elif any(k in i_type_clean for k in ["ai", "ml"]):
+        return round(0.60 * t + 0.25 * c + 0.15 * e)
+    else:
+        return round(0.40 * t + 0.40 * c + 0.20 * e)
 
 async def get_interview_session(session_id: str) -> Optional[Dict[str, Any]]:
     async with AsyncSessionLocal() as session:
@@ -152,15 +217,25 @@ async def get_interview_session(session_id: str) -> Optional[Dict[str, Any]]:
                 except (json.JSONDecodeError, TypeError):
                     return [val]
 
+            det_metrics = getattr(interview.feedback, "detailed_metrics", None)
+            overall_score = compute_domain_weighted_score(
+                interview.interview_type,
+                interview.feedback.technical_score,
+                interview.feedback.communication_score,
+                interview.feedback.english_score,
+                det_metrics
+            )
+
             feedback_data = {
                 "technical_score": interview.feedback.technical_score,
                 "communication_score": interview.feedback.communication_score,
                 "english_score": interview.feedback.english_score,
+                "overall_score": overall_score,
                 "strengths": safe_json_load(interview.feedback.strengths),
                 "weaknesses": safe_json_load(interview.feedback.weaknesses),
                 "improvement_plan": safe_json_load(interview.feedback.improvement_plan),
                 "recommended_topics": interview.feedback.recommended_topics,
-                "detailed_metrics": getattr(interview.feedback, "detailed_metrics", None)
+                "detailed_metrics": det_metrics
             }
             
         return {
@@ -190,11 +265,20 @@ async def get_all_interviews_for_user(user_id: str) -> List[Dict[str, Any]]:
         for interview in interviews:
             feedback_data = None
             if interview.feedback:
+                det_metrics = getattr(interview.feedback, "detailed_metrics", None)
+                overall_score = compute_domain_weighted_score(
+                    interview.interview_type,
+                    interview.feedback.technical_score,
+                    interview.feedback.communication_score,
+                    interview.feedback.english_score,
+                    det_metrics
+                )
                 feedback_data = {
                     "technical_score": interview.feedback.technical_score,
                     "communication_score": interview.feedback.communication_score,
                     "english_score": interview.feedback.english_score,
-                    "detailed_metrics": getattr(interview.feedback, "detailed_metrics", None)
+                    "overall_score": overall_score,
+                    "detailed_metrics": det_metrics
                 }
             ai_selected_questions = []
             if interview.state_data and isinstance(interview.state_data, dict):

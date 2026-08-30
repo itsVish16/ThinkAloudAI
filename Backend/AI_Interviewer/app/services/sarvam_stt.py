@@ -80,7 +80,9 @@ class SarvamRealtimeSpeechStream(stt.SpeechStream):
                                         await ws.send_realtime_audio_input(
                                             RealtimeAudioInput(audio=b64_audio)
                                         )
-                                elif isinstance(frame, stt.RecognizeStream._FlushSentinel):
+                                flush_sentinel_cls = getattr(stt, "RecognizeStream", getattr(stt, "SpeechStream", None))
+                                _FlushSentinel = getattr(flush_sentinel_cls, "_FlushSentinel", None)
+                                if _FlushSentinel and isinstance(frame, _FlushSentinel):
                                     # Flush pending buffer bytes to WebSocket without calling RealtimeFlush
                                     if buf:
                                         b64_audio = base64.b64encode(bytes(buf)).decode("utf-8")
@@ -99,41 +101,36 @@ class SarvamRealtimeSpeechStream(stt.SpeechStream):
                                         RealtimeAudioInput(audio=b64_audio)
                                     )
                                 await ws.send_realtime_end(RealtimeEnd())
-                            except Exception as e:
-                                logger.debug(f"Error ending realtime stream: {e}")
+                            except Exception:
+                                pass
 
                     async def receive_events():
                         try:
                             async for message in ws:
-                                event = getattr(message, "event", None)
-                                if event == "transcript.partial":
-                                    text = getattr(message, "text", "")
-                                    if text and text.strip():
-                                        logger.debug(f"Sarvam STT Partial: '{text.strip()}'")
+                                event = getattr(message, "event", None) or getattr(message, "type", None)
+                                text = getattr(message, "text", None) or getattr(message, "transcript", "")
+                                if isinstance(text, str):
+                                    text = text.strip()
+
+                                if event in ("transcript.partial", "transcript"):
+                                    if text:
                                         self._event_ch.send_nowait(
                                             stt.SpeechEvent(
                                                 type=stt.SpeechEventType.INTERIM_TRANSCRIPT,
                                                 alternatives=[
-                                                    stt.SpeechData(
-                                                        language=self._language,
-                                                        text=text.strip(),
-                                                    )
-                                                ],
+                                                    stt.SpeechData(language=self._language, text=text)
+                                                ]
                                             )
                                         )
                                 elif event == "transcript.final":
-                                    text = getattr(message, "text", "")
-                                    if text and text.strip():
-                                        logger.info(f"Sarvam STT Final Transcript: '{text.strip()}'")
+                                    if text:
+                                        logger.info(f"Sarvam STT Final Transcript: '{text}'")
                                         self._event_ch.send_nowait(
                                             stt.SpeechEvent(
                                                 type=stt.SpeechEventType.FINAL_TRANSCRIPT,
                                                 alternatives=[
-                                                    stt.SpeechData(
-                                                        language=self._language,
-                                                        text=text.strip(),
-                                                    )
-                                                ],
+                                                    stt.SpeechData(language=self._language, text=text)
+                                                ]
                                             )
                                         )
                                 elif event in ("speech.start", "vad.speech_start"):
@@ -145,13 +142,8 @@ class SarvamRealtimeSpeechStream(stt.SpeechStream):
                                         stt.SpeechEvent(type=stt.SpeechEventType.END_OF_SPEECH)
                                     )
                                 elif event == "error":
-                                    err_msg = getattr(message, "message", str(message))
-                                    is_fatal = getattr(message, "is_fatal", False)
-                                    logger.error(f"Sarvam Realtime STT Error: {err_msg} (fatal={is_fatal})")
-                                    if is_fatal:
-                                        break
-                                elif event == "session.end":
-                                    logger.debug("Sarvam STT session completed.")
+                                    err_msg = getattr(message, "message", None) or getattr(message, "error", str(message))
+                                    logger.error(f"Sarvam Realtime STT Error event: {err_msg}")
                                     break
                         except asyncio.CancelledError:
                             pass
@@ -166,8 +158,15 @@ class SarvamRealtimeSpeechStream(stt.SpeechStream):
                         [send_task, recv_task],
                         return_when=asyncio.FIRST_COMPLETED
                     )
+                    if send_task in done and not recv_task.done():
+                        # Give receiver a short grace period to capture final transcription packet
+                        try:
+                            await asyncio.wait_for(recv_task, timeout=1.2)
+                        except (asyncio.TimeoutError, asyncio.CancelledError):
+                            pass
                     for t in pending:
-                        t.cancel()
+                        if not t.done():
+                            t.cancel()
                     if self._input_ch.closed:
                         break
 

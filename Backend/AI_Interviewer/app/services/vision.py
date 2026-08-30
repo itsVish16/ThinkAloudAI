@@ -7,6 +7,8 @@ from livekit import rtc
 from openai import AsyncOpenAI
 from PIL import Image
 
+from app.config import settings
+
 logger = logging.getLogger("vision_service")
 
 _vlm_instance = None
@@ -23,7 +25,7 @@ class LocalVLMService:
         """
         Initializes the VLM service to use Qwen via Fireworks API.
         """
-        self.api_key = os.getenv("FIREWORKS_API_KEY")
+        self.api_key = getattr(settings, "FIREWORKS_API_KEY", None) or os.getenv("FIREWORKS_API_KEY", "")
         if not self.api_key:
             logger.warning("FIREWORKS_API_KEY is not set. Vision service will fail.")
             
@@ -31,7 +33,7 @@ class LocalVLMService:
             api_key=self.api_key or "dummy_key_not_set",
             base_url="https://api.fireworks.ai/inference/v1"
         )
-        self.model = "accounts/fireworks/models/qwen3p7-plus"
+        self.model = os.getenv("VISION_MODEL", "accounts/fireworks/models/qwen2-vl-72b-instruct")
 
     async def analyze_frame(self, frame: rtc.VideoFrame, is_whiteboard=False) -> str:
         """
@@ -42,11 +44,11 @@ class LocalVLMService:
 
         try:
             # Convert LiveKit VideoFrame to a PIL Image
-            argb_frame = frame.convert(rtc.VideoBufferType.ARGB)
+            rgba_frame = frame.convert(rtc.VideoBufferType.RGBA)
             image = Image.frombytes(
                 "RGBA", 
-                (argb_frame.width, argb_frame.height), 
-                argb_frame.data
+                (rgba_frame.width, rgba_frame.height), 
+                rgba_frame.data
             ).convert("RGB")
             
             # Downscale for performance and API limits

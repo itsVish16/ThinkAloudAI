@@ -86,8 +86,6 @@ services:
     depends_on:
       datadog-agent:
         condition: service_started
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
@@ -121,8 +119,6 @@ services:
         condition: service_healthy
       datadog-agent:
         condition: service_started
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
       rabbitmq:
@@ -163,8 +159,6 @@ services:
         condition: service_healthy
       datadog-agent:
         condition: service_started
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
       rabbitmq:
@@ -201,8 +195,6 @@ services:
         condition: service_healthy
       datadog-agent:
         condition: service_started
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
       rabbitmq:
@@ -212,26 +204,6 @@ services:
       com.datadoghq.tags.service: ai-interviewer-worker
       com.datadoghq.tags.env: ${DD_ENV:-production}
       com.datadoghq.ad.logs: '[{"source":"python","service":"ai-interviewer-worker"}]'
-  postgres:
-    image: postgres:16-alpine
-    container_name: thinkaloud-dev-postgres
-    networks: *id001
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-thinkaloud}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-thinkaloud_dev}
-    ports:
-    - 127.0.0.1:${POSTGRES_PORT:-5432}:5432
-    volumes:
-    - postgres-data:/var/lib/postgresql/data
-    - ./init-databases.sql:/docker-entrypoint-initdb.d/001-init-databases.sql:ro
-    healthcheck:
-      test:
-      - CMD-SHELL
-      - pg_isready -U ${POSTGRES_USER:-thinkaloud}
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
   redis:
     image: redis:7-alpine
     container_name: thinkaloud-dev-redis
@@ -259,6 +231,9 @@ services:
     image: rabbitmq:3-management-alpine
     container_name: thinkaloud-dev-rabbitmq
     networks: *id001
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-thinkaloud}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-thinkaloud_rabbit_secret}
     ports:
     - 127.0.0.1:${RABBITMQ_PORT:-5672}:5672
     - 127.0.0.1:${RABBITMQ_MGMT_PORT:-15672}:15672
@@ -284,8 +259,6 @@ services:
     environment:
       DD_SERVICE: ai-interviewer-analysis-worker
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
       rabbitmq:
@@ -295,7 +268,6 @@ networks:
     name: thinkaloud-backend
     driver: bridge
 volumes:
-  postgres-data: null
   redis-data: null
   rabbitmq-data: null
   caddy_data: null

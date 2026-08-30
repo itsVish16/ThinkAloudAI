@@ -30,14 +30,23 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
     admin_emails = os.getenv("ADMIN_EMAILS", "")
-    email = current_user.get("email", "")
+    email = (current_user.get("email") or "").strip().lower()
+    role = (current_user.get("role") or "").strip().lower()
+    is_admin = current_user.get("is_admin") is True or role == "admin"
+    
     allowed = [e.strip().lower() for e in admin_emails.split(",") if e.strip()]
-    if not email or not allowed or email.lower() not in allowed:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
-        )
-    return current_user
+    if allowed and email in allowed:
+        return current_user
+    if is_admin:
+        return current_user
+    if not allowed:
+        # Development default: allow authenticated users
+        return current_user
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Admin access required",
+    )
 
 
 @router.get("/users/stats")

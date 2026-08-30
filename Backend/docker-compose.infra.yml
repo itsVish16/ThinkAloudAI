@@ -1,29 +1,9 @@
-# Local development infrastructure only.
-#
-# Production/VM deployment should use:
-#   docker compose -f docker-compose.yml up -d --build
+# Local development infrastructure (Redis + RabbitMQ).
+# Database is hosted externally on Azure PostgreSQL.
 
 name: thinkaloud-infra-dev
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: thinkaloud-dev-postgres
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-thinkaloud}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-thinkaloud_dev}
-    ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
-    volumes:
-      - dev-postgres-data:/var/lib/postgresql/data
-      - ./init-databases.sql:/docker-entrypoint-initdb.d/001-init-databases.sql:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-thinkaloud}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
-
   redis:
     image: redis:7-alpine
     container_name: thinkaloud-dev-redis
@@ -39,6 +19,24 @@ services:
       retries: 10
     restart: unless-stopped
 
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: thinkaloud-dev-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-thinkaloud}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-thinkaloud_rabbit_secret}
+    ports:
+      - "127.0.0.1:${RABBITMQ_PORT:-5672}:5672"
+      - "127.0.0.1:${RABBITMQ_MGMT_PORT:-15672}:15672"
+    volumes:
+      - dev-rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
 volumes:
-  dev-postgres-data:
   dev-redis-data:
+  dev-rabbitmq-data:

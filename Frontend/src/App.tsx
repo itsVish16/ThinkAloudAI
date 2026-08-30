@@ -186,12 +186,13 @@ function App() {
   }, [currentPage]);
 
   const handleNavigate = useCallback((page: string, params?: NavParams) => {
-    const protectedPages: Page[] = ['dashboard', 'practice', 'dsa-interview', 'general-interview', 'system-design-interview', 'discussion', 'profile', 'analysis'];
+    const protectedPages: Page[] = ['dashboard', 'practice', 'dsa-interview', 'general-interview', 'system-design-interview', 'discussion', 'chat', 'analysis', 'admin'];
     const currentToken = accessToken || localStorage.getItem('access_token');
 
     let targetPage = (VALID_PAGES.has(page) ? page : 'landing') as Page;
 
-    if (protectedPages.includes(targetPage) && !currentToken) {
+    const isPublicProfile = targetPage === 'profile' && Boolean(params?.username);
+    if (protectedPages.includes(targetPage) && !currentToken && !isPublicProfile) {
       // Redirect to login if user is not authenticated
       targetPage = 'login';
     }
@@ -236,8 +237,9 @@ function App() {
 
   const renderPage = () => {
     // Route guard fallback on render
-    const protectedPages: Page[] = ['dashboard', 'practice', 'dsa-interview', 'general-interview', 'system-design-interview', 'discussion', 'chat', 'analysis'];
-    if (protectedPages.includes(currentPage) && !accessToken) {
+    const protectedPages: Page[] = ['dashboard', 'practice', 'dsa-interview', 'general-interview', 'system-design-interview', 'discussion', 'chat', 'analysis', 'admin'];
+    const isPublicProfile = currentPage === 'profile' && Boolean(navParams?.username);
+    if (protectedPages.includes(currentPage) && !accessToken && !isPublicProfile) {
       return <LoginPage onNavigate={handleNavigate} onLoginSuccess={handleLoginSuccess} />;
     }
 
@@ -257,13 +259,41 @@ function App() {
       case 'practice':
         return <DSAPractice questionId={navParams.questionId} user={user} onNavigate={handleNavigate} />;
       case 'dsa-interview':
-        return <DSAInterview templateId={navParams.templateId} templateName={navParams.templateName} accessToken={accessToken} onNavigate={handleNavigate} />;
+        return (
+          <DSAInterview 
+            questionId={navParams.questionId}
+            templateId={navParams.templateId} 
+            templateName={navParams.templateName} 
+            domain={navParams.domain}
+            role={navParams.role}
+            accessToken={accessToken} 
+            onNavigate={handleNavigate} 
+          />
+        );
       case 'general-interview':
-        return <GeneralInterview templateId={navParams.templateId} templateName={navParams.templateName} accessToken={accessToken} onNavigate={handleNavigate} />;
+        return (
+          <GeneralInterview 
+            templateId={navParams.templateId} 
+            templateName={navParams.templateName} 
+            domain={navParams.domain}
+            role={navParams.role}
+            accessToken={accessToken} 
+            onNavigate={handleNavigate} 
+          />
+        );
       case 'system-design-interview':
         return <SystemDesignInterview templateId={navParams.templateId} templateName={navParams.templateName} accessToken={accessToken} onNavigate={handleNavigate} domain={navParams.domain} role={navParams.role} />;
       case 'discussion':
-        return <GeneralInterview templateId={navParams.templateId || 'discussion'} templateName={navParams.templateName || 'Discussion & Case Study'} accessToken={accessToken} onNavigate={handleNavigate} />;
+        return (
+          <GeneralInterview 
+            templateId={navParams.templateId || 'discussion'} 
+            templateName={navParams.templateName || 'Discussion & Case Study'} 
+            domain={navParams.domain}
+            role={navParams.role}
+            accessToken={accessToken} 
+            onNavigate={handleNavigate} 
+          />
+        );
       case 'analysis':
         return <InterviewAnalysis sessionId={navParams.sessionId || ''} onNavigate={handleNavigate} />;
       case 'admin':

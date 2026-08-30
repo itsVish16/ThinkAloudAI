@@ -67,30 +67,61 @@ export const PreJoinInterview: React.FC<PreJoinInterviewProps> = ({
               </div>
             </div>
 
-            {templateId === 'system_design' && (
-              <div className="prejoin-prefs">
-                <h4><i className="ti ti-settings"></i> Interview Preferences</h4>
-                <div className="prejoin-prefs-grid">
-                  <div className="pref-group">
-                    <label>Domain</label>
-                    <select value={domain} onChange={(e) => setDomain(e.target.value)}>
-                      <option value="Backend">Backend</option>
-                      <option value="AI/ML">AI/ML</option>
-                      <option value="Frontend">Frontend</option>
-                      <option value="Data">Data</option>
-                    </select>
-                  </div>
-                  <div className="pref-group">
-                    <label>Role Level</label>
-                    <select value={role} onChange={(e) => setRole(e.target.value)}>
-                      <option value="Software Engineer">Software Engineer</option>
-                      <option value="Senior Software Engineer">Senior Software Engineer</option>
-                      <option value="Staff Engineer">Staff Engineer</option>
-                    </select>
-                  </div>
+            {/* Track-Aware Interview Preferences */}
+            <div className="prejoin-prefs">
+              <h4><i className="ti ti-settings"></i> Track Focus &amp; Experience</h4>
+              <div className="prejoin-prefs-grid">
+                <div className="pref-group">
+                  <label>Focus Domain</label>
+                  <select value={domain} onChange={(e) => setDomain(e.target.value)}>
+                    {templateId === 'aiml' ? (
+                      <>
+                        <option value="LLMs & Generative AI">LLMs & Generative AI</option>
+                        <option value="Machine Learning Infra">Machine Learning Infra</option>
+                        <option value="Computer Vision">Computer Vision</option>
+                        <option value="NLP & Search">NLP & Search</option>
+                      </>
+                    ) : templateId === 'product_management' ? (
+                      <>
+                        <option value="Product Strategy & Vision">Product Strategy & Vision</option>
+                        <option value="Metrics & Execution">Metrics & Execution</option>
+                        <option value="Technical Product Sense">Technical Product Sense</option>
+                        <option value="Growth & Monetization">Growth & Monetization</option>
+                      </>
+                    ) : templateId === 'behavioral' ? (
+                      <>
+                        <option value="Leadership & Ownership">Leadership & Ownership</option>
+                        <option value="Cross-Functional Conflict">Cross-Functional Conflict</option>
+                        <option value="Failure & Adaptability">Failure & Adaptability</option>
+                        <option value="STAR Culture Alignment">STAR Culture Alignment</option>
+                      </>
+                    ) : templateId === 'discussion' ? (
+                      <>
+                        <option value="Technical Architecture Review">Technical Architecture Review</option>
+                        <option value="Thesis & Research Defense">Thesis & Research Defense</option>
+                        <option value="System Trade-Offs">System Trade-Offs</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="Backend">Backend</option>
+                        <option value="Fullstack">Fullstack</option>
+                        <option value="AI/ML">AI/ML</option>
+                        <option value="Distributed Systems">Distributed Systems</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+                <div className="pref-group">
+                  <label>Target Role Level</label>
+                  <select value={role} onChange={(e) => setRole(e.target.value)}>
+                    <option value="Software Engineer">Software Engineer</option>
+                    <option value="Senior Engineer / PM">Senior Level</option>
+                    <option value="Staff / Lead">Staff / Principal</option>
+                    <option value="Engineering Manager">Engineering Manager</option>
+                  </select>
                 </div>
               </div>
-            )}
+            </div>
           </div>
 
           {/* Device Setup Section */}

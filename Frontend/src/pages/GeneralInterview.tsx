@@ -1,66 +1,316 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Brain, Mic, MicOff, Video, VideoOff } from 'lucide-react';
-import { Room } from 'livekit-client';
-import { LiveKitRoom, RoomAudioRenderer, BarVisualizer, useVoiceAssistant } from "@livekit/components-react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { 
+  Mic, 
+  MicOff, 
+  Video, 
+  VideoOff, 
+  Sparkles, 
+  AlertCircle, 
+  RefreshCw, 
+  CheckCircle2, 
+  User, 
+  Bot, 
+  LogOut,
+  Radio,
+  MessageSquare
+} from 'lucide-react';
+import { RoomEvent, Track } from 'livekit-client';
+import { 
+  LiveKitRoom, 
+  RoomAudioRenderer, 
+  BarVisualizer, 
+  useVoiceAssistant, 
+  useRoomContext,
+  useLocalParticipant,
+  useTranscriptions,
+  VideoTrack
+} from "@livekit/components-react";
 import "@livekit/components-styles";
-import { CameraFeed } from '../components/CameraFeed';
-import { LiveTranscript } from '../components/LiveTranscript';
 import { endInterview } from '../services/interviewService';
 import { apiClient } from '../services/apiClient';
-import '../styles/MockInterview.css';
+import { API_BASE_URL } from '../config/api';
+import '../styles/GeneralInterview.css';
 
 interface GeneralInterviewProps {
   templateId?: string;
   templateName?: string;
+  domain?: string;
+  role?: string;
   accessToken?: string | null;
   onNavigate: (page: string, params?: any) => void;
 }
 
-// Module-scope component so it isn't recreated (and remounted) on every render.
-// Defining it inside the component body caused useVoiceAssistant() to tear down
-// and re-initialize on every parent render, breaking the voice agent.
-const AgentVisualizer = () => {
-  const { state, audioTrack } = useVoiceAssistant();
-  const isSpeaking = state === 'speaking';
-  
+// ============================================================
+// 1. CANDIDATE CAMERA CARD (LEFT VIDEO)
+// ============================================================
+const CandidateVideoCard = ({ 
+  isCameraActive, 
+  isMuted, 
+  onToggleCamera, 
+  onToggleMic 
+}: { 
+  isCameraActive: boolean; 
+  isMuted: boolean; 
+  onToggleCamera: () => void; 
+  onToggleMic: () => void; 
+}) => {
+  const { localParticipant, cameraTrack } = useLocalParticipant();
+
+  useEffect(() => {
+    if (localParticipant) {
+      localParticipant.setCameraEnabled(isCameraActive);
+    }
+  }, [isCameraActive, localParticipant]);
+
+  useEffect(() => {
+    if (localParticipant) {
+      localParticipant.setMicrophoneEnabled(!isMuted);
+    }
+  }, [isMuted, localParticipant]);
+
+  const hasVideo = !!cameraTrack && isCameraActive;
+
+  const trackRef = (cameraTrack && isCameraActive) ? {
+    participant: localParticipant,
+    publication: cameraTrack,
+    source: Track.Source.Camera
+  } : null;
+
   return (
-    <div className="camera-feed-box" style={{ width: '100%', height: '100%', position: 'relative' }}>
-      <div style={{ position: 'absolute', top: 8, left: 8, background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.75rem', zIndex: 10, display: 'flex', alignItems: 'center', gap: '4px', color: '#fff' }}>
-        <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#00D084' }}></div> Interviewer
+    <div className={`gi-video-card candidate ${!isMuted ? 'speaking' : ''}`}>
+      {/* Top Floating Tag */}
+      <div className="gi-video-top-tag">
+        <div className={`gi-avatar-dot ${!isMuted ? 'green' : 'orange'}`} />
+        <span>You (Candidate)</span>
       </div>
-      <div className="camera-placeholder" style={{ background: '#1a1a24' }}>
-        <div className="camera-off-avatar" style={{ boxShadow: isSpeaking ? '0 0 0 4px rgba(0, 208, 132, 0.5)' : 'none', transition: 'box-shadow 0.2s', background: '#333' }}>
+
+      {/* Video Content or Fallback */}
+      {hasVideo && trackRef ? (
+        <VideoTrack
+          trackRef={trackRef as any}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }}
+        />
+      ) : (
+        <div className="gi-camera-off-state">
+          <div className="gi-candidate-avatar-large">
+            <User size={36} />
+          </div>
+          <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 600 }}>
+            {isCameraActive ? 'Initializing Video Feed...' : 'Camera Paused'}
+          </span>
         </div>
-        <div style={{ marginTop: '1rem', height: '20px' }}>
-          <BarVisualizer state={state} barCount={5} trackRef={audioTrack} style={{ height: '20px', width: '60px' }} />
-        </div>
-      </div>
-      
-      {/* Zoom-like overlay controls */}
-      <div className="camera-overlay-info">
-        <span className="user-name"></span>
-        <div className="status-icons">
-          {isSpeaking ? (
-            <Mic size={12} className="status-icon unmute" />
-          ) : (
-            <MicOff size={12} className="status-icon mute" />
-          )}
-          <VideoOff size={12} className="status-icon video-off" />
-        </div>
+      )}
+
+      {/* Candidate Floating Quick Controls */}
+      <div className="gi-candidate-controls">
+        <button
+          className={`gi-ctrl-btn ${isMuted ? 'active-off' : ''}`}
+          onClick={onToggleMic}
+          title={isMuted ? "Unmute microphone" : "Mute microphone"}
+        >
+          {isMuted ? <MicOff size={16} /> : <Mic size={16} />}
+        </button>
+
+        <button
+          className={`gi-ctrl-btn ${!isCameraActive ? 'active-off' : ''}`}
+          onClick={onToggleCamera}
+          title={isCameraActive ? "Turn off camera" : "Turn on camera"}
+        >
+          {!isCameraActive ? <VideoOff size={16} /> : <Video size={16} />}
+        </button>
       </div>
     </div>
   );
 };
 
-export const GeneralInterview: React.FC<GeneralInterviewProps> = ({ templateId, templateName, accessToken, onNavigate }) => {
-  const API_URL = import.meta.env.VITE_API_URL || '';
-  const [roomName] = useState(`gen-int-${Math.floor(Math.random() * 100000)}`);
+// ============================================================
+// 2. AI INTERVIEWER CARD (RIGHT VIDEO / AUDIO VISUALIZER)
+// ============================================================
+const AIAgentCard = () => {
+  const { state, audioTrack } = useVoiceAssistant();
+  const isSpeaking = state === 'speaking';
+  const isListening = state === 'listening';
+
+  const statusLabel = useMemo(() => {
+    if (isSpeaking) return '🎙️ Aarav is speaking...';
+    if (isListening) return '👂 Listening to your response...';
+    return '⚡ Formulating questions...';
+  }, [isSpeaking, isListening]);
+
+  return (
+    <div className={`gi-video-card ai ${isSpeaking ? 'speaking' : ''}`}>
+      {/* Top Floating Tag */}
+      <div className="gi-video-top-tag">
+        <div className="gi-avatar-dot orange" />
+        <span>Aarav (AI Senior Interviewer)</span>
+      </div>
+
+      {/* Center AI Presence Stage */}
+      <div className="gi-ai-center-stage">
+        <div className="gi-ai-orb-wrap">
+          <div className={`gi-ai-orb-ring ${isSpeaking ? 'speaking' : ''}`} />
+          <div className={`gi-ai-avatar-orb ${isSpeaking ? 'speaking' : ''}`}>
+            <Sparkles size={34} />
+          </div>
+        </div>
+
+        {/* Audio Equalizer */}
+        <div className="gi-ai-equalizer-wrap">
+          <BarVisualizer 
+            state={state} 
+            barCount={9} 
+            trackRef={audioTrack} 
+            style={{ height: '24px', width: '100px' }} 
+          />
+        </div>
+
+        {/* Dynamic Status Text */}
+        <span className={`gi-ai-status-text ${isSpeaking ? 'speaking' : isListening ? 'listening' : ''}`}>
+          {statusLabel}
+        </span>
+      </div>
+    </div>
+  );
+};
+
+// ============================================================
+// 3. DOWNSIDE LIVE TRANSCRIPT FEED
+// ============================================================
+const DownsideLiveTranscript = () => {
+  const transcriptions = useTranscriptions();
+  const { localParticipant } = useLocalParticipant();
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Deduplicate and process live transcript segments
+  const deduplicated = useMemo(() => {
+    const map = new Map<string, typeof transcriptions[0]>();
+    transcriptions.forEach((t, i) => {
+      const segId = (t as any)?.segment?.id || (t as any)?.id || t.streamInfo?.id || `seg-${i}`;
+      map.set(segId, t);
+    });
+    return Array.from(map.values());
+  }, [transcriptions]);
+
+  // Auto-scroll to bottom on every speech update
+  useEffect(() => {
+    if (containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
+  }, [deduplicated]);
+
+  return (
+    <div className="gi-lower-section">
+      <div className="gi-transcript-header">
+        <div className="gi-transcript-title">
+          <MessageSquare size={15} className="text-orange-400" />
+          <span>Live Conversation Transcript</span>
+        </div>
+        <span className="gi-transcript-meta">
+          {deduplicated.length} turns recorded • Real-time STT Sync
+        </span>
+      </div>
+
+      <div className="gi-transcript-feed" ref={containerRef}>
+        {deduplicated.length === 0 ? (
+          <div className="gi-transcript-empty">
+            <Radio size={20} className="animate-pulse text-gray-500" />
+            <span>Spoken conversation and live dialogue will stream here in real time...</span>
+          </div>
+        ) : (
+          deduplicated.map((t, idx) => {
+            const isLocal = t.participantInfo?.identity === localParticipant?.identity;
+            const key = (t as any)?.segment?.id || (t as any)?.id || t.streamInfo?.id || idx;
+
+            return (
+              <div 
+                key={key} 
+                className={`gi-transcript-row ${isLocal ? 'candidate' : 'ai'}`}
+              >
+                <div className={`gi-transcript-avatar ${isLocal ? 'candidate' : 'ai'}`}>
+                  {isLocal ? <User size={14} /> : <Bot size={14} />}
+                </div>
+
+                <div className={`gi-transcript-bubble ${isLocal ? 'candidate' : 'ai'}`}>
+                  <span style={{ fontSize: '0.68rem', display: 'block', fontWeight: 700, marginBottom: '2px', color: isLocal ? '#fdba74' : '#f97316' }}>
+                    {isLocal ? 'You' : 'Aarav (AI)'}
+                  </span>
+                  <div>{t.text}</div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ============================================================
+// 4. ROOM DATA LISTENER
+// ============================================================
+const RoomDataListener = ({ onCompleted }: { onCompleted: () => void }) => {
+  const room = useRoomContext();
+
+  useEffect(() => {
+    if (!room) return;
+    const handleData = (payload: Uint8Array) => {
+      try {
+        const str = new TextDecoder().decode(payload);
+        const data = JSON.parse(str);
+        if (data.type === 'interview_completed') {
+          onCompleted();
+        }
+      } catch {
+        // Ignore unparseable non-JSON packets
+      }
+    };
+
+    room.on(RoomEvent.DataReceived, handleData);
+    return () => {
+      room.off(RoomEvent.DataReceived, handleData);
+    };
+  }, [room, onCompleted]);
+
+  return null;
+};
+
+// ============================================================
+// 5. MAIN GENERAL INTERVIEW COMPONENT
+// ============================================================
+export const GeneralInterview: React.FC<GeneralInterviewProps> = ({ 
+  templateId, 
+  templateName, 
+  domain, 
+  role, 
+  accessToken, 
+  onNavigate 
+}) => {
+  const API_URL = API_BASE_URL;
+  const [roomName] = useState(() => `gen-int-${Math.floor(Math.random() * 100000)}`);
   const [connectionDetails, setConnectionDetails] = useState<{ url: string, token: string } | null>(null);
   const [isCameraActive, setIsCameraActive] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
   const [isEnding, setIsEnding] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(true);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
-  const handleEndInterview = async () => {
+  const displayTitle = useMemo(() => {
+    if (templateName) return templateName;
+    const tId = (templateId || '').toLowerCase();
+    if (tId.includes('behavioral')) return 'Behavioral & STAR Interview';
+    if (tId.includes('aiml') || tId.includes('ai')) return 'AI & Machine Learning Interview';
+    if (tId.includes('product') || tId.includes('pm')) return 'Product Management Interview';
+    if (tId.includes('discussion')) return 'Discussion & Technical Presentation';
+    return 'AI Mock Interview';
+  }, [templateName, templateId]);
+
+  const displayDomain = domain || (
+    (templateId || '').toLowerCase().includes('pm') ? 'Product' :
+    (templateId || '').toLowerCase().includes('aiml') ? 'AI / ML' :
+    (templateId || '').toLowerCase().includes('behavioral') ? 'Behavioral' : 'General'
+  );
+
+  const handleEndInterview = useCallback(async () => {
     setIsEnding(true);
     try {
       const token = accessToken || localStorage.getItem('access_token');
@@ -73,14 +323,12 @@ export const GeneralInterview: React.FC<GeneralInterviewProps> = ({ templateId, 
       setIsEnding(false);
       onNavigate('analysis', { sessionId: roomName });
     }
-  };
+  }, [accessToken, roomName, onNavigate]);
 
-  const roomRef = useRef<Room | null>(null);
-
-
-  // Connect to LiveKit Room API
   const handleConnect = async () => {
     try {
+      setIsConnecting(true);
+      setConnectionError(null);
       const headers: any = { 'Content-Type': 'application/json' };
       const token = accessToken || localStorage.getItem('access_token');
       if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -88,52 +336,72 @@ export const GeneralInterview: React.FC<GeneralInterviewProps> = ({ templateId, 
       const response = await apiClient.fetchWithAuth(`${API_URL}/api/token`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ room_name: roomName, interview_type: templateId || 'general' })
+        body: JSON.stringify({ 
+          room_name: roomName, 
+          interview_type: templateId || 'general',
+          domain: displayDomain,
+          role: role || 'Software Engineer'
+        })
       });
 
-      if (!response.ok) throw new Error(`Server returned status ${response.status}`);
-      const connectionData = await response.json();
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        throw new Error(errorText || `Server returned status ${response.status}`);
+      }
       
+      const connectionData = await response.json();
       setConnectionDetails({ url: connectionData.url, token: connectionData.token });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Connection failed:", err);
+      setConnectionError(err.message || "Failed to connect to the interview room. Please check your connection and try again.");
+    } finally {
+      setIsConnecting(false);
     }
   };
 
   useEffect(() => {
     handleConnect();
     return () => {
-      // Eagerly unmount LiveKit room to disconnect WebRTC
       setConnectionDetails(null);
     };
   }, []);
 
   return (
-    <div className="workspace-layout">
-      {/* HEADER EXACT MATCH TO DSA */}
-      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 1.5rem', background: '#0A0A12', borderBottom: '1px solid #1F1F2E' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#fff', fontWeight: 'bold' }}>
-            <img src="/logo.png" alt="ThinkAloudAI" style={{height: '24px'}} />
+    <div className="gi-studio-layout">
+      {/* HEADER NAVIGATION */}
+      <header className="gi-header">
+        <div className="gi-header-left">
+          <div className="gi-logo-wrap" onClick={() => onNavigate('dashboard')}>
+            <img src="/logo.png" alt="ThinkAloudAI" className="gi-logo-img" />
           </div>
-          <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#fff', margin: 0 }}>{templateName || 'General Discussion'}</h2>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#888' }}>
-            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#00D084' }}></div> Live
+
+          <div className="gi-title-group">
+            <h1 className="gi-track-title">{displayTitle}</h1>
+            <span className="gi-domain-pill">{displayDomain}</span>
+            {role && <span className="gi-role-pill">{role}</span>}
+          </div>
+
+          <div className="gi-live-badge">
+            <div className="gi-live-dot" />
+            <span>LIVE STUDIO</span>
           </div>
         </div>
-        <button 
-          className="btn btn-secondary" 
-          style={{ padding: '6px 16px', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem', border: '1px solid rgba(255,255,255,0.1)', cursor: isEnding ? 'wait' : 'pointer', opacity: isEnding ? 0.7 : 1 }} 
-          onClick={handleEndInterview}
-          disabled={isEnding}
-        >
-           {isEnding ? 'Ending...' : 'End Interview'}
-        </button>
+
+        <div className="gi-header-right">
+          <button 
+            className="gi-btn-end" 
+            onClick={handleEndInterview}
+            disabled={isEnding}
+            title="Complete interview and view deep analysis"
+          >
+            <LogOut size={15} />
+            <span>{isEnding ? 'Wrapping up...' : 'End Interview'}</span>
+          </button>
+        </div>
       </header>
 
-      <main className="workspace-main">
-        <div className="general-interview-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', padding: '2rem' }}>
-          
+      {/* MAIN STUDIO WORKSPACE */}
+      <main className="gi-workspace-body">
         {connectionDetails ? (
           <LiveKitRoom
             serverUrl={connectionDetails.url}
@@ -143,48 +411,61 @@ export const GeneralInterview: React.FC<GeneralInterviewProps> = ({ templateId, 
             video={true}
             style={{ display: 'contents' }}
           >
-              <RoomAudioRenderer />
-            
-            <div style={{ width: '100%', maxWidth: '900px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div style={{ display: 'flex', gap: '1rem', flex: 1, height: '400px' }}>
-                {/* User Camera */}
-                <div style={{ flex: 1, background: '#111', borderRadius: '12px', overflow: 'hidden', position: 'relative', border: '1px solid #1F1F2E', aspectRatio: '16/9' }}>
-                  <div style={{ position: 'absolute', top: 12, left: 12, background: 'rgba(0,0,0,0.6)', padding: '4px 8px', borderRadius: '6px', fontSize: '0.8rem', zIndex: 10, display: 'flex', alignItems: 'center', gap: '6px', color: '#fff' }}>
-                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#00D084' }}></div> You
-                  </div>
-                  <div style={{ position: 'absolute', bottom: 12, left: 0, width: '100%', display: 'flex', justifyContent: 'center', gap: '0.5rem', zIndex: 10 }}>
-                    <button style={{ background: 'rgba(0,0,0,0.6)', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer' }} onClick={() => setIsMuted(!isMuted)}>
-                      {isMuted ? <MicOff size={14} /> : <Mic size={14} />}
-                    </button>
-                    <button style={{ background: 'rgba(0,0,0,0.6)', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer' }} onClick={() => setIsCameraActive(!isCameraActive)}>
-                      {!isCameraActive ? <VideoOff size={14} /> : <Video size={14} />}
-                    </button>
-                  </div>
-                  <CameraFeed isActive={isCameraActive} isMuted={isMuted} />
-                </div>
-                
-                {/* AI Agent Visualizer */}
-                <div style={{ flex: 1, background: '#111', borderRadius: '12px', overflow: 'hidden', position: 'relative', border: '1px solid #1F1F2E', aspectRatio: '16/9' }}>
-                  <AgentVisualizer />
-                </div>
-              </div>
+            <RoomAudioRenderer />
+            <RoomDataListener onCompleted={handleEndInterview} />
 
-              {/* Live Transcript Panel for General */}
-              <div style={{ background: '#111', borderRadius: '12px', overflow: 'hidden', border: '1px solid #1F1F2E', flex: '0 0 200px', padding: '1.5rem', display: 'flex', flexDirection: 'column' }}>
-                 <h3 style={{ fontSize: '1rem', margin: '0 0 1rem 0', color: '#fff' }}>Live Transcript</h3>
-                 <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                    <LiveTranscript />
-                 </div>
+            {/* MIDDLE DISPLAY: 16:9 DUAL VIDEO STAGE */}
+            <div className="gi-dual-video-stage">
+              {/* Left: Candidate Camera */}
+              <CandidateVideoCard 
+                isCameraActive={isCameraActive}
+                isMuted={isMuted}
+                onToggleCamera={() => setIsCameraActive(prev => !prev)}
+                onToggleMic={() => setIsMuted(prev => !prev)}
+              />
+
+              {/* Right: AI Interviewer */}
+              <AIAgentCard />
+            </div>
+
+            {/* LOWER SECTION: DOWNSIDE LIVE TRANSCRIPT */}
+            <DownsideLiveTranscript />
+          </LiveKitRoom>
+        ) : connectionError ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '1rem' }}>
+            <div style={{ background: '#121320', padding: '2.5rem', borderRadius: '16px', border: '1px solid rgba(239, 68, 68, 0.3)', textAlign: 'center', maxWidth: '480px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+              <AlertCircle size={44} color="#ef4444" />
+              <div>
+                <h3 style={{ color: '#fff', fontSize: '1.1rem', margin: '0 0 0.5rem 0', fontWeight: 700 }}>Connection Interrupted</h3>
+                <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: 0, lineHeight: 1.5 }}>{connectionError}</p>
+              </div>
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <button 
+                  onClick={handleConnect} 
+                  disabled={isConnecting}
+                  style={{ background: '#f97316', color: '#fff', border: 'none', padding: '8px 20px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, fontSize: '0.85rem' }}
+                >
+                  <RefreshCw size={14} className={isConnecting ? 'animate-spin' : ''} />
+                  <span>{isConnecting ? 'Retrying...' : 'Retry Connection'}</span>
+                </button>
+                <button 
+                  onClick={() => onNavigate('dashboard')} 
+                  style={{ background: 'rgba(255,255,255,0.06)', color: '#e2e8f0', border: '1px solid rgba(255,255,255,0.1)', padding: '8px 20px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}
+                >
+                  Dashboard
+                </button>
               </div>
             </div>
-          </LiveKitRoom>
+          </div>
         ) : (
-          <div style={{ display: 'flex', width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', color: '#888' }}>
-            Connecting to AI Interviewer...
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '14px', color: '#94a3b8' }}>
+            <RefreshCw size={28} color="#f97316" className="animate-spin" />
+            <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>Connecting to AI Interview Studio...</span>
           </div>
         )}
-        </div>
       </main>
     </div>
   );
 };
+
+export default GeneralInterview;

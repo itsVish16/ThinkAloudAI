@@ -1,9 +1,26 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { API_BASE_URL } from '../services/apiClient';
-import { ArrowLeft, Warning, WarningCircle } from '@phosphor-icons/react';
-import { getInterviewDetails, endInterview } from '../services/interviewService';
+import { 
+  ArrowLeft, 
+  Warning, 
+  WarningCircle, 
+  Lightning, 
+  CaretDown, 
+  CaretUp,
+  Robot,
+  User,
+  Copy,
+  Check,
+  MagnifyingGlass,
+  ChatCircleDots,
+  Microphone,
+  Sparkle
+} from '@phosphor-icons/react';
+import { getInterviewDetails, endInterview, getInterviewSessionMetrics } from '../services/interviewService';
 import { PageHeader } from '../components/common/PageHeader';
 import './InterviewAnalysis.css';
+
+import { computeUnifiedInterviewScore } from '../utils/interviewScore';
 
 interface InterviewAnalysisProps {
   sessionId: string;
@@ -14,7 +31,16 @@ export function InterviewAnalysis({ sessionId, onNavigate }: InterviewAnalysisPr
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [analysisData, setAnalysisData] = useState<any>(null);
+  const [sessionMetrics, setSessionMetrics] = useState<any>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [showTelemetry, setShowTelemetry] = useState(false);
+  const [expandedTurn, setExpandedTurn] = useState<number | null>(null);
+  
+  // Chat Transcript interactive states
+  const [chatSearch, setChatSearch] = useState('');
+  const [speakerFilter, setSpeakerFilter] = useState<'all' | 'ai' | 'candidate'>('all');
+  const [copiedMsgIdx, setCopiedMsgIdx] = useState<number | null>(null);
+  const [fullTranscriptCopied, setFullTranscriptCopied] = useState(false);
 
   const ringRef = useRef<SVGCircleElement>(null);
 
@@ -40,6 +66,14 @@ export function InterviewAnalysis({ sessionId, onNavigate }: InterviewAnalysisPr
       }
       
       setAnalysisData(data);
+
+      // Fetch telemetry metrics in parallel
+      try {
+        const metrics = await getInterviewSessionMetrics(token, sessionId);
+        setSessionMetrics(metrics);
+      } catch (mErr) {
+        console.log("Telemetry metrics not available for this session:", mErr);
+      }
     } catch (err: any) {
       setError(err.message || "Failed to load analysis");
     } finally {
@@ -53,25 +87,7 @@ export function InterviewAnalysis({ sessionId, onNavigate }: InterviewAnalysisPr
     }
   }, [sessionId]);
 
-  const calcFallbackScore = () => {
-    const tech = analysisData?.evaluation?.technical_score;
-    const comm = analysisData?.evaluation?.communication_score;
-    const eng = analysisData?.evaluation?.english_score;
-
-    const scores = [tech, comm, eng].filter((s): s is number => typeof s === 'number' && !isNaN(s));
-    if (scores.length === 0) return 0;
-    return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
-  };
-
-  const rawOverall = 
-    analysisData?.evaluation?.overall_score ??
-    analysisData?.details?.overall_score ??
-    analysisData?.evaluation?.score ??
-    analysisData?.overall_score;
-
-  const overallScore = typeof rawOverall === 'number' && !isNaN(rawOverall)
-    ? Math.round(rawOverall)
-    : calcFallbackScore();
+  const overallScore = computeUnifiedInterviewScore(analysisData, analysisData?.interview_type) ?? 0;
 
   const handleForceComplete = async () => {
     setIsGenerating(true);
@@ -170,6 +186,74 @@ export function InterviewAnalysis({ sessionId, onNavigate }: InterviewAnalysisPr
 
   const verdict = detailed.hiring_decision || "Pending";
   const commScore = evaluation?.communication_score || 0;
+
+  // Normalize transcript list from either analysisData.transcript or sessionMetrics.turns
+  const rawTranscriptList = (() => {
+    if (transcript && Array.isArray(transcript) && transcript.length > 0) {
+      return transcript;
+    }
+    if (sessionMetrics?.turns && Array.isArray(sessionMetrics.turns) && sessionMetrics.turns.length > 0) {
+      const flat: any[] = [];
+      sessionMetrics.turns.forEach((t: any) => {
+        if (t.user_text) {
+          flat.push({
+            role: 'candidate',
+            content: t.user_text,
+            turn_number: t.turn_number,
+            stage: t.stage,
+            timestamp: t.timestamp
+          });
+        }
+        if (t.response_text) {
+          flat.push({
+            role: 'assistant',
+            content: t.response_text,
+            turn_number: t.turn_number,
+            stage: t.stage,
+            timestamp: t.timestamp,
+            fast_llm: t.fast_llm,
+            e2e_latency_ms: t.e2e_response_latency_ms
+          });
+        }
+      });
+      return flat;
+    }
+    return [];
+  })();
+
+  // Filter transcript by speaker and search query
+  const filteredTranscript = rawTranscriptList.filter((msg: any) => {
+    const isAI = msg.role === 'assistant' || msg.role === 'ai' || msg.role === 'interviewer';
+    if (speakerFilter === 'ai' && !isAI) return false;
+    if (speakerFilter === 'candidate' && isAI) return false;
+    if (chatSearch.trim()) {
+      const q = chatSearch.toLowerCase();
+      const contentMatch = (msg.content || '').toLowerCase().includes(q);
+      const stageMatch = (msg.stage || '').toLowerCase().includes(q);
+      return contentMatch || stageMatch;
+    }
+    return true;
+  });
+
+  const handleCopyMessage = (text: string, idx: number) => {
+    navigator.clipboard.writeText(text);
+    setCopiedMsgIdx(idx);
+    setTimeout(() => setCopiedMsgIdx(null), 2000);
+  };
+
+  const handleCopyFullTranscript = () => {
+    if (!rawTranscriptList || rawTranscriptList.length === 0) return;
+    const fullText = rawTranscriptList
+      .map((msg: any) => {
+        const isAI = msg.role === 'assistant' || msg.role === 'ai' || msg.role === 'interviewer';
+        const speaker = isAI ? 'AI Interviewer (Aarav)' : (candidate_name || 'Candidate');
+        return `[${speaker}]:\n${msg.content}\n`;
+      })
+      .join('\n');
+    navigator.clipboard.writeText(fullText);
+    setFullTranscriptCopied(true);
+    setTimeout(() => setFullTranscriptCopied(false), 2000);
+  };
 
   // Render Bar
   const renderMeter = (name: string, score: number, delayMs: number) => {
@@ -374,36 +458,300 @@ export function InterviewAnalysis({ sessionId, onNavigate }: InterviewAnalysisPr
           </div>
         </div>
 
-        {/* TRANSCRIPT */}
-        {transcript && transcript.length > 0 && (
+        {/* ============================================================
+            BEAUTIFUL INTERVIEW TRANSCRIPT (MODERN CHAT UI)
+            ============================================================ */}
+        {rawTranscriptList && rawTranscriptList.length > 0 && (
           <div className="ta-rise" style={{ animationDelay: '.38s' }}>
-            <div className="ta-sec-head"><h2>Interview Transcript</h2><span>{transcript.length} turns</span></div>
-            
-            <div className="ta-transcript-timeline" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1rem' }}>
-              {transcript.map((msg: any, idx: number) => {
-                const isAI = msg.role === 'assistant' || msg.role === 'ai';
-                return (
-                  <div 
-                    key={idx} 
-                    className="ta-qa"
-                    style={{
-                      background: isAI ? 'rgba(255,122,41,0.05)' : 'rgba(255,255,255,0.03)',
-                      border: isAI ? '1px solid rgba(255,122,41,0.2)' : '1px solid rgba(255,255,255,0.08)',
-                      borderRadius: '12px',
-                      padding: '1rem 1.25rem'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.5rem' }}>
-                      <span className="ta-qnum" style={{ background: isAI ? 'var(--orange, #ff7a29)' : '#555', color: '#fff', fontSize: '0.75rem', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                        {isAI ? 'Aarav (AI Interviewer)' : (candidate_name || 'You')}
-                      </span>
-                    </div>
-                    <div style={{ color: '#f6f6f3', fontSize: '0.95rem', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
-                      {msg.content}
-                    </div>
+            <div className="ta-sec-head">
+              <h2>Interview Transcript</h2>
+              <span>{rawTranscriptList.length} total messages</span>
+            </div>
+
+            {/* Chat Container Card */}
+            <div className="ta-chat-container">
+              
+              {/* Chat Header Toolbar */}
+              <div className="ta-chat-header-bar">
+                {/* Search Bar */}
+                <div className="ta-chat-search-wrap">
+                  <MagnifyingGlass size={15} className="ta-chat-search-icon" />
+                  <input
+                    type="text"
+                    placeholder="Search spoken dialogue, code, or keywords..."
+                    value={chatSearch}
+                    onChange={(e) => setChatSearch(e.target.value)}
+                    className="ta-chat-search-input"
+                  />
+                  {chatSearch && (
+                    <button className="ta-chat-clear-search" onClick={() => setChatSearch('')}>
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter Pills & Actions */}
+                <div className="ta-chat-actions-group">
+                  <div className="ta-chat-filter-pills">
+                    <button 
+                      className={`ta-chat-filter-btn ${speakerFilter === 'all' ? 'active' : ''}`}
+                      onClick={() => setSpeakerFilter('all')}
+                    >
+                      All ({rawTranscriptList.length})
+                    </button>
+                    <button 
+                      className={`ta-chat-filter-btn ${speakerFilter === 'ai' ? 'active' : ''}`}
+                      onClick={() => setSpeakerFilter('ai')}
+                    >
+                      <Robot size={13} />
+                      AI ({rawTranscriptList.filter((m: any) => m.role === 'assistant' || m.role === 'ai' || m.role === 'interviewer').length})
+                    </button>
+                    <button 
+                      className={`ta-chat-filter-btn ${speakerFilter === 'candidate' ? 'active' : ''}`}
+                      onClick={() => setSpeakerFilter('candidate')}
+                    >
+                      <User size={13} />
+                      You ({rawTranscriptList.filter((m: any) => m.role === 'candidate' || m.role === 'user').length})
+                    </button>
                   </div>
-                );
-              })}
+
+                  {/* Copy Transcript Button */}
+                  <button 
+                    className="ta-chat-copy-all-btn"
+                    onClick={handleCopyFullTranscript}
+                    title="Copy complete interview transcript to clipboard"
+                  >
+                    {fullTranscriptCopied ? (
+                      <>
+                        <Check size={14} className="text-green-400" />
+                        <span className="text-green-400">Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={14} />
+                        <span>Copy All</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Chat Feed */}
+              <div className="ta-chat-feed">
+                {filteredTranscript.length === 0 ? (
+                  <div className="ta-chat-empty-state">
+                    <ChatCircleDots size={32} className="text-gray-500 mb-2" />
+                    <p>No messages match your search filter.</p>
+                  </div>
+                ) : (
+                  filteredTranscript.map((msg: any, idx: number) => {
+                    const isAI = msg.role === 'assistant' || msg.role === 'ai' || msg.role === 'interviewer';
+                    const speakerName = isAI ? 'Aarav (AI Senior Interviewer)' : (candidate_name || 'You (Candidate)');
+                    const isCopied = copiedMsgIdx === idx;
+
+                    return (
+                      <div 
+                        key={idx} 
+                        className={`ta-chat-message-row ${isAI ? 'ai' : 'candidate'}`}
+                      >
+                        {/* Avatar */}
+                        <div className={`ta-chat-avatar ${isAI ? 'ai' : 'candidate'}`}>
+                          {isAI ? (
+                            <Robot size={18} weight="fill" />
+                          ) : (
+                            <User size={18} weight="bold" />
+                          )}
+                        </div>
+
+                        {/* Bubble Wrap */}
+                        <div className="ta-chat-bubble-wrap">
+                          {/* Speaker Meta Header */}
+                          <div className="ta-chat-meta-head">
+                            <span className="ta-chat-speaker-name">{speakerName}</span>
+                            {isAI ? (
+                              <span className="ta-chat-badge-ai">
+                                <Sparkle size={10} weight="fill" />
+                                <span>Voice AI</span>
+                              </span>
+                            ) : (
+                              <span className="ta-chat-badge-candidate">Candidate</span>
+                            )}
+                            {msg.turn_number && (
+                              <span className="ta-chat-turn-pill">Turn #{msg.turn_number}</span>
+                            )}
+                          </div>
+
+                          {/* Message Content Bubble */}
+                          <div className={`ta-chat-bubble ${isAI ? 'ai' : 'candidate'}`}>
+                            <div className="ta-chat-text">
+                              {msg.content}
+                            </div>
+
+                            {/* Optional Speculative Fast LLM Filler preview */}
+                            {msg.fast_llm?.output && (
+                              <div className="ta-chat-fast-bridge-chip">
+                                <span>⚡ Speculative Bridge: </span>
+                                <code>{msg.fast_llm.output}</code>
+                              </div>
+                            )}
+
+                            {/* Bubble Footer Bar (Latency & Copy Button) */}
+                            <div className="ta-chat-bubble-footer">
+                              {msg.e2e_latency_ms && (
+                                <span className="ta-chat-latency-micro">
+                                  ⚡ {Math.round(msg.e2e_latency_ms)}ms latency
+                                </span>
+                              )}
+
+                              <button 
+                                className="ta-chat-copy-msg-btn"
+                                onClick={() => handleCopyMessage(msg.content, idx)}
+                                title="Copy message"
+                              >
+                                {isCopied ? (
+                                  <>
+                                    <Check size={12} className="text-green-400" />
+                                    <span className="text-green-400">Copied</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy size={12} />
+                                    <span>Copy</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+            </div>
+          </div>
+        )}
+
+        {/* LATENCY & TURN TELEMETRY BREAKDOWN */}
+        {sessionMetrics?.summary && sessionMetrics.summary.total_turns > 0 && (
+          <div className="ta-rise" style={{ animationDelay: '.42s' }}>
+            <div className="ta-sec-head">
+              <h2>Speech &amp; Turn Latency Telemetry</h2>
+              <span>{sessionMetrics.summary.total_turns} turns recorded</span>
+            </div>
+
+            <div className="telemetry-analysis-card" style={{ marginTop: '1rem', background: '#0e0f18', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', padding: '18px' }}>
+              {/* Summary 4-box row */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+                <div style={{ background: '#141524', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '12px' }}>
+                  <span style={{ fontSize: '0.7rem', color: '#9ca3af', textTransform: 'uppercase' }}>Avg Voice Latency</span>
+                  <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#f97316', fontFamily: 'JetBrains Mono, monospace', marginTop: '2px' }}>
+                    {Math.round(sessionMetrics.summary.avg_e2e_latency_ms || 0)} ms
+                  </div>
+                </div>
+
+                <div style={{ background: '#141524', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '12px' }}>
+                  <span style={{ fontSize: '0.7rem', color: '#9ca3af', textTransform: 'uppercase' }}>Fast Bridge TTFT</span>
+                  <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#10b981', fontFamily: 'JetBrains Mono, monospace', marginTop: '2px' }}>
+                    {Math.round(sessionMetrics.summary.avg_fast_llm_ttft_ms || 0)} ms
+                  </div>
+                </div>
+
+                <div style={{ background: '#141524', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '12px' }}>
+                  <span style={{ fontSize: '0.7rem', color: '#9ca3af', textTransform: 'uppercase' }}>Main Reasoner TTFT</span>
+                  <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#3b82f6', fontFamily: 'JetBrains Mono, monospace', marginTop: '2px' }}>
+                    {Math.round(sessionMetrics.summary.avg_main_llm_ttft_ms || 0)} ms
+                  </div>
+                </div>
+
+                <div style={{ background: '#141524', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '12px' }}>
+                  <span style={{ fontSize: '0.7rem', color: '#9ca3af', textTransform: 'uppercase' }}>Min / Max Latency</span>
+                  <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#ffffff', fontFamily: 'JetBrains Mono, monospace', marginTop: '6px' }}>
+                    {Math.round(sessionMetrics.summary.min_e2e_latency_ms || 0)}ms / {Math.round(sessionMetrics.summary.max_e2e_latency_ms || 0)}ms
+                  </div>
+                </div>
+              </div>
+
+              {/* Turn-by-Turn Trace Accordion */}
+              {sessionMetrics.turns && sessionMetrics.turns.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#e5e7eb' }}>Granular Pipeline Traces</span>
+                  
+                  {sessionMetrics.turns.map((turn: any) => {
+                    const isExpanded = expandedTurn === turn.turn_number;
+                    return (
+                      <div 
+                        key={turn.turn_number}
+                        style={{
+                          background: '#121320',
+                          border: '1px solid rgba(255,255,255,0.06)',
+                          borderRadius: '8px',
+                          overflow: 'hidden'
+                        }}
+                      >
+                        <div 
+                          onClick={() => setExpandedTurn(isExpanded ? null : turn.turn_number)}
+                          style={{
+                            padding: '10px 14px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            cursor: 'pointer',
+                            background: isExpanded ? 'rgba(255,255,255,0.03)' : 'transparent'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '0.7rem', fontWeight: 800, background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px', color: '#fff', fontFamily: 'monospace' }}>
+                              Turn #{turn.turn_number}
+                            </span>
+                            <span style={{ fontSize: '0.75rem', color: '#9ca3af', maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              "{turn.user_text || '...'}"
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#f97316', background: 'rgba(249,115,22,0.12)', border: '1px solid rgba(249,115,22,0.3)', padding: '2px 8px', borderRadius: '4px', fontFamily: 'monospace' }}>
+                              {turn.e2e_response_latency_ms ? `${Math.round(turn.e2e_response_latency_ms)} ms` : '—'}
+                            </span>
+                            {isExpanded ? <CaretUp size={14} color="#9ca3af" /> : <CaretDown size={14} color="#9ca3af" />}
+                          </div>
+                        </div>
+
+                        {isExpanded && (
+                          <div style={{ padding: '12px 14px', borderTop: '1px solid rgba(255,255,255,0.05)', background: '#0a0b12', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            {/* Pipeline Badges */}
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', fontSize: '0.72rem' }}>
+                              <span style={{ background: '#161726', padding: '4px 8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                                🎙️ STT: <b>{turn.stt_latency_ms ? `${Math.round(turn.stt_latency_ms)}ms` : '—'}</b>
+                              </span>
+                              <span style={{ background: 'rgba(16,185,129,0.08)', color: '#10b981', padding: '4px 8px', borderRadius: '6px', border: '1px solid rgba(16,185,129,0.25)' }}>
+                                ⚡ Fast TTFT: <b>{turn.fast_llm?.ttft_ms ? `${Math.round(turn.fast_llm.ttft_ms)}ms` : '—'}</b>
+                              </span>
+                              <span style={{ background: 'rgba(59,130,246,0.08)', color: '#3b82f6', padding: '4px 8px', borderRadius: '6px', border: '1px solid rgba(59,130,246,0.25)' }}>
+                                🧠 Main TTFT: <b>{turn.main_llm?.ttft_ms ? `${Math.round(turn.main_llm.ttft_ms)}ms` : '—'}</b>
+                              </span>
+                              <span style={{ background: '#161726', padding: '4px 8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                                🔊 TTS: <b>{turn.tts_latency_ms ? `${Math.round(turn.tts_latency_ms)}ms` : '—'}</b>
+                              </span>
+                            </div>
+
+                            {turn.fast_llm?.output && (
+                              <div style={{ fontSize: '0.75rem', color: '#10b981', background: 'rgba(16,185,129,0.05)', padding: '6px 10px', borderRadius: '6px', border: '1px solid rgba(16,185,129,0.15)' }}>
+                                <b>Speculative Bridge:</b> {turn.fast_llm.output}
+                              </div>
+                            )}
+
+                            <div style={{ fontSize: '0.8rem', color: '#e5e7eb', lineHeight: '1.5' }}>
+                              <b>AI Answer:</b> {turn.response_text || '—'}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )}

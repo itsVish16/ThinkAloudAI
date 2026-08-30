@@ -10,7 +10,7 @@ import json
 import logging
 from datetime import datetime, timedelta, UTC
 
-from app.services.db import get_db
+from app.services.db import get_db, compute_domain_weighted_score
 from app.models.interview import InterviewSession, UserProfileReplica, InterviewFeedback
 from app.services.auth import get_current_user
 from app.config import settings
@@ -25,6 +25,9 @@ async def require_admin(
     db: AsyncSession = Depends(get_db)
 ):
     email = current_user.get("email")
+    role = (current_user.get("role") or "").strip().lower()
+    is_admin = current_user.get("is_admin") is True or role == "admin"
+
     if current_user.get("raw_token") and not email:
         try:
             user_service_url = os.getenv("USER_SERVICE_URL", "http://localhost:8000")
@@ -35,19 +38,26 @@ async def require_admin(
                 timeout=5.0
             )
             if resp.status_code == 200:
-                email = resp.json().get("email", email)
+                userData = resp.json()
+                email = userData.get("email", email)
+                if userData.get("is_admin") is True or (userData.get("role") or "").lower() == "admin":
+                    is_admin = True
         except Exception as e:
             logger.error(f"Failed to fetch user email from user-service: {e}")
 
     admin_emails = os.getenv("ADMIN_EMAILS", settings.ADMIN_EMAILS)
-    if not email:
-        raise HTTPException(status_code=403, detail="Not authorized. No email found.")
-    
     allowed = [e.strip().lower() for e in admin_emails.split(",") if e.strip()]
-    if not allowed or email.lower() not in allowed:
-        raise HTTPException(status_code=403, detail="Not authorized. Admin access required.")
-        
-    return current_user
+    
+    email_lower = (email or "").strip().lower()
+    if allowed and email_lower in allowed:
+        return current_user
+    if is_admin:
+        return current_user
+    if not allowed:
+        # Development default: allow authenticated users
+        return current_user
+
+    raise HTTPException(status_code=403, detail="Not authorized. Admin access required.")
 
 
 # ---------------------------------------------------------------------------
@@ -201,7 +211,13 @@ async def get_admin_interviews(
             
         score = None
         if session.feedback:
-            score = round((session.feedback.technical_score + session.feedback.communication_score) / 2)
+            score = compute_domain_weighted_score(
+                session.interview_type,
+                session.feedback.technical_score,
+                session.feedback.communication_score,
+                session.feedback.english_score,
+                getattr(session.feedback, "detailed_metrics", None)
+            )
             
         interviews.append({
             "id": session.id,
@@ -333,3 +349,123 @@ async def delete_interview_session_admin(
     await db.commit()
 
     return {"message": "Interview session deleted successfully", "session_id": session_id}
+
+
+@router.get(
+    "/interviews/{session_id}/metrics",
+    summary="Admin: Get Interview Latency Traces & Telemetry",
+    description="Retrieves granular turn-by-turn latency metrics (E2E latency, TTFT, Fast vs Main LLM breakdown) for any session."
+)
+async def get_admin_interview_metrics(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_admin)
+):
+    stmt = (
+        select(InterviewSession)
+        .options(
+            joinedload(InterviewSession.feedback),
+            joinedload(InterviewSession.user)
+        )
+        .where(InterviewSession.id == session_id)
+    )
+    result = await db.execute(stmt)
+    session = result.scalars().first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Interview session not found")
+
+    state_data = session.state_data if isinstance(session.state_data, dict) else {}
+    telemetry_summary = state_data.get("telemetry_summary") or {
+        "total_turns": 0,
+        "avg_e2e_latency_ms": 0,
+        "min_e2e_latency_ms": 0,
+        "max_e2e_latency_ms": 0,
+        "avg_main_llm_ttft_ms": 0,
+        "avg_fast_llm_ttft_ms": 0,
+        "avg_turn_duration_ms": 0,
+    }
+    turns = state_data.get("turn_metrics_history") or []
+
+    return {
+        "session_id": session.id,
+        "candidate_name": session.candidate_name,
+        "user_email": session.user.email if session.user else None,
+        "interview_type": session.interview_type,
+        "stage": session.stage,
+        "created_at": session.created_at.isoformat() if session.created_at else None,
+        "updated_at": session.updated_at.isoformat() if session.updated_at else None,
+        "telemetry_summary": telemetry_summary,
+        "turns": turns
+    }
+
+
+@router.get(
+    "/telemetry/overview",
+    summary="Admin: Global Telemetry & Latency Dashboard",
+    description="Aggregates system-wide latency performance across all recent sessions."
+)
+async def get_admin_telemetry_overview(
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_admin)
+):
+    stmt = (
+        select(InterviewSession)
+        .options(joinedload(InterviewSession.user))
+        .order_by(desc(InterviewSession.created_at))
+        .limit(limit)
+    )
+    result = await db.execute(stmt)
+    sessions = result.scalars().all()
+
+    all_e2e_latencies = []
+    all_main_ttfts = []
+    all_fast_ttfts = []
+    session_summaries = []
+    slowest_turns = []
+
+    for s in sessions:
+        state = s.state_data if isinstance(s.state_data, dict) else {}
+        summary = state.get("telemetry_summary") or {}
+        turns = state.get("turn_metrics_history") or []
+
+        if summary and summary.get("avg_e2e_latency_ms"):
+            all_e2e_latencies.append(summary["avg_e2e_latency_ms"])
+        if summary and summary.get("avg_main_llm_ttft_ms"):
+            all_main_ttfts.append(summary["avg_main_llm_ttft_ms"])
+        if summary and summary.get("avg_fast_llm_ttft_ms"):
+            all_fast_ttfts.append(summary["avg_fast_llm_ttft_ms"])
+
+        for t in turns:
+            if isinstance(t, dict) and t.get("e2e_response_latency_ms"):
+                slowest_turns.append({
+                    "session_id": s.id,
+                    "candidate_name": s.candidate_name,
+                    "stage": t.get("stage"),
+                    "turn_number": t.get("turn_number"),
+                    "e2e_latency_ms": t.get("e2e_response_latency_ms"),
+                    "main_llm_ttft_ms": t.get("main_llm", {}).get("ttft_ms"),
+                    "user_text": (t.get("user_text") or "")[:80],
+                })
+
+        session_summaries.append({
+            "session_id": s.id,
+            "candidate_name": s.candidate_name,
+            "interview_type": s.interview_type,
+            "stage": s.stage,
+            "total_turns": len(turns),
+            "avg_e2e_latency_ms": summary.get("avg_e2e_latency_ms", 0),
+            "created_at": s.created_at.isoformat() if s.created_at else None
+        })
+
+    # Sort slowest turns top 10
+    slowest_turns.sort(key=lambda x: x["e2e_latency_ms"], reverse=True)
+
+    return {
+        "analyzed_sessions_count": len(sessions),
+        "overall_avg_e2e_latency_ms": round(sum(all_e2e_latencies) / len(all_e2e_latencies), 1) if all_e2e_latencies else 0,
+        "overall_avg_main_ttft_ms": round(sum(all_main_ttfts) / len(all_main_ttfts), 1) if all_main_ttfts else 0,
+        "overall_avg_fast_ttft_ms": round(sum(all_fast_ttfts) / len(all_fast_ttfts), 1) if all_fast_ttfts else 0,
+        "slowest_turns": slowest_turns[:10],
+        "recent_sessions": session_summaries
+    }
