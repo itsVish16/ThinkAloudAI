@@ -29,6 +29,7 @@ import { authService } from '../services/authService';
 import { getDashboardOverview, getDSAProfileStats, getDSAQuestions, getUserSubmissions } from '../services/dsaService';
 import { getMyInterviews } from '../services/interviewService';
 import { getLiveLeaderboard } from '../services/leaderboardService';
+import { computeUnifiedInterviewScore } from '../utils/interviewScore';
 
 interface ProfilePageProps {
   onNavigate: (page: string, params?: any) => void;
@@ -247,7 +248,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigate, username }
         const hmArray = Object.keys(hm).map(k => ({ date: k, count: hm[k] }));
 
         // Calculate active streak
-        let computedStreak = dsaStatsData?.current_streak || profData?.stats?.current_streak || 0;
+        let computedStreak = dsaStatsData?.current_streak || profData?.current_streak || profData?.stats?.current_streak || 0;
         if (Object.keys(hm).length > 0) {
           const sortedDates = Object.keys(hm).sort().reverse();
           const todayStr = new Date().toISOString().split('T')[0];
@@ -360,7 +361,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigate, username }
   // Difficulty Calculations
   const solvedCount = d.client_stats?.total_solved ?? p.stats?.problems_solved_total ?? 0;
   const totalSubmissions = d.client_stats?.total_submissions ?? p.stats?.total_submissions ?? 0;
-  const streakCount = d.client_stats?.streak ?? p.stats?.current_streak ?? 0;
+  const streakCount = d.client_stats?.streak ?? p.current_streak ?? p.stats?.current_streak ?? 0;
   const accuracyRate = Number(d.client_stats?.accuracy ?? p.stats?.acceptance_rate ?? 0).toFixed(1);
   const submissionsList = p.recent_submissions || [];
 
@@ -756,10 +757,10 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigate, username }
                   <strong>{totalSubmissions}</strong> submissions in the past year
                 </span>
                 <span className="lc-heatmap-meta">
-                  Total active days: <strong>{Object.keys(d.heatmap || {}).length || Math.min(30, totalSubmissions)}</strong>
+                  Total active days: <strong>{Array.isArray(d.heatmap) ? d.heatmap.filter((h: any) => ((h.count || 0) + (h.problems_solved || 0) + (h.interviews_done || 0)) > 0).length : (d.heatmap && typeof d.heatmap === 'object' ? Object.keys(d.heatmap).length : 0)}</strong>
                 </span>
                 <span className="lc-heatmap-meta">
-                  Max streak: <strong>{Math.max(streakCount, 14)}</strong> days
+                  Max streak: <strong>{streakCount || 0}</strong> days
                 </span>
               </div>
 
@@ -839,21 +840,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigate, username }
                 mockInterviews.length > 0 ? (
                   <div className="lc-interviews-list">
                     {mockInterviews.map((interview: any, idx: number) => {
-                      const fb = interview.feedback;
-                      let score: number | null = null;
-                      if (fb?.technical_score != null) {
-                        if (fb.communication_score != null) {
-                          const total = fb.technical_score + fb.communication_score + (fb.english_score || 0);
-                          const divisor = fb.english_score != null ? 3 : 2;
-                          score = Math.round(total / divisor);
-                        } else {
-                          score = Math.round(fb.technical_score);
-                        }
-                      } else if (fb?.overall_score != null) {
-                        score = Math.round(fb.overall_score);
-                      } else if (interview.score != null) {
-                        score = Math.round(interview.score);
-                      }
+                      const score = computeUnifiedInterviewScore(interview, interview.interview_type);
 
                       const interviewTitle = interview.interview_type
                         ? `${interview.interview_type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())} Mock Interview`

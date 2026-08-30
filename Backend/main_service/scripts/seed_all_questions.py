@@ -20,116 +20,111 @@ logger = logging.getLogger(__name__)
 
 
 async def seed_dsa_questions(db):
-    jsonl_path = os.path.join(os.path.dirname(__file__), "enriched_leetcode.jsonl")
-    if not os.path.exists(jsonl_path):
-        logger.warning(f"File {jsonl_path} not found. Skipping JSONL DSA seed.")
-        return
+    json_path = os.path.join(os.path.dirname(__file__), "..", "canonical_dsa_questions.json")
+    if not os.path.exists(json_path):
+        json_path = os.path.join(os.path.dirname(__file__), "canonical_dsa_questions.json")
+        if not os.path.exists(json_path):
+            logger.warning(f"File {json_path} not found. Skipping DSA seed.")
+            return
 
-    with open(jsonl_path, "r", encoding="utf-8") as f:
-        lines = f.readlines()
+    with open(json_path, "r", encoding="utf-8") as f:
+        questions_data = json.load(f)
 
     inserted, updated = 0, 0
-    for line in lines:
-        if not line.strip():
+    for data in questions_data:
+        title = data.get("title")
+        if not title:
             continue
         try:
-            data = json.loads(line)
-            title = data.get("title")
-            if not title:
-                continue
-
+            tags = data.pop("tags", [])
             result = await db.execute(select(DSAQuestion).filter(DSAQuestion.title == title))
             existing_q = result.scalars().first()
-
-            tc_data = data.get("test_cases", [])
-            test_cases_str = tc_data if isinstance(tc_data, str) else json.dumps(tc_data)
 
             if existing_q:
                 existing_q.description = data.get("description", existing_q.description)
                 existing_q.difficulty = data.get("difficulty", existing_q.difficulty)
                 existing_q.function_name = data.get("function_name", existing_q.function_name)
                 existing_q.python_starter_code = data.get("python_starter_code", existing_q.python_starter_code)
-                existing_q.hints = json.dumps(data.get("hints", []))
-                existing_q.test_cases = test_cases_str
+                existing_q.cpp_starter_code = data.get("cpp_starter_code", existing_q.cpp_starter_code)
+                existing_q.cpp_test_harness = data.get("cpp_test_harness", existing_q.cpp_test_harness)
+                existing_q.test_cases = data.get("test_cases", existing_q.test_cases)
+                existing_q.hints = data.get("hints", existing_q.hints)
+                existing_q.optimal_time_complexity = data.get("optimal_time_complexity", existing_q.optimal_time_complexity)
+                existing_q.optimal_space_complexity = data.get("optimal_space_complexity", existing_q.optimal_space_complexity)
                 q_id = existing_q.id
                 updated += 1
             else:
-                new_q = DSAQuestion(
-                    title=title,
-                    description=data.get("description", ""),
-                    difficulty=data.get("difficulty", "Medium"),
-                    function_name=data.get("function_name", "solution"),
-                    python_starter_code=data.get("python_starter_code", ""),
-                    hints=json.dumps(data.get("hints", [])),
-                    test_cases=test_cases_str,
-                )
+                new_q = DSAQuestion(**data)
                 db.add(new_q)
                 await db.flush()
                 q_id = new_q.id
                 inserted += 1
 
-            tags = data.get("tags", [])
             if tags:
-                await db.execute(ProblemTag.__table__.delete().where(ProblemTag.question_id == q_id))
+                existing_tags_res = await db.execute(select(ProblemTag).filter(ProblemTag.question_id == q_id))
+                existing_tags = {t.tag_name for t in existing_tags_res.scalars().all()}
                 for tag_name in tags:
-                    db.add(ProblemTag(question_id=q_id, tag_name=tag_name))
+                    if tag_name not in existing_tags:
+                        db.add(ProblemTag(question_id=q_id, tag_name=tag_name))
 
         except Exception as ex:
-            logger.error(f"Error seeding DSA item: {ex}")
+            logger.error(f"Error seeding DSA item {title}: {ex}")
 
     await db.commit()
-    logger.info(f"✅ DSA Questions Seeded: {inserted} inserted, {updated} updated.")
+    logger.info(f"✅ Canonical DSA Questions Seeded: {inserted} inserted, {updated} updated (Total: {len(questions_data)}).")
 
 
 async def seed_system_design_questions(db):
-    sd_questions = [
-        {
-            "title": "Design a Distributed Message Queue",
-            "description": "Design a distributed, highly available message broker like Apache Kafka or RabbitMQ. Discuss topic partitioning, log compaction, offset commit semantics, replication, leader election, and consumer group rebalancing under high network throughput.",
-            "domain": "Backend",
-            "role": "Senior Software Engineer"
-        },
-        {
-            "title": "Design a High-Throughput URL Shortener",
-            "description": "Design a globally distributed URL shortening service like TinyURL / bit.ly capable of handling 100M new URLs/month and 10B clicks/month. Detail Base62 encoding, custom aliases, collision resolution, multi-tier caching (Redis), database sharding, and analytics tracking.",
-            "domain": "Backend",
-            "role": "Software Engineer"
-        },
-        {
-            "title": "Design a Real-Time Collaborative Document Editor",
-            "description": "Design Google Docs / Notion collaborative editor supporting concurrent edits with sub-100ms latency. Explain Operational Transformation (OT) vs CRDTs (Conflict-free Replicated Data Types), WebSockets connection multiplexing, document snapshotting, and presence awareness.",
-            "domain": "Full-Stack / Distributed Systems",
-            "role": "Staff Software Engineer"
-        },
-        {
-            "title": "Design a Video Streaming Platform (Netflix / YouTube)",
-            "description": "Design a video ingestion and streaming pipeline. Cover chunking, adaptive bitrate streaming (HLS/DASH), CDN edge caching strategies, transcoding workers, metadata indexing, and global multi-region failover.",
-            "domain": "Cloud & Infrastructure",
-            "role": "Senior Infrastructure Engineer"
-        },
-        {
-            "title": "Design a Retrieval-Augmented Generation (RAG) Architecture",
-            "description": "Design an enterprise-scale RAG system with low-latency search and real-time document ingestion. Address embedding models, approximate nearest neighbor (HNSW) vector indexing, hybrid BM25 + dense retrieval, reranking, context window optimization, and prompt injection defense.",
-            "domain": "AI/ML",
-            "role": "AI/ML Systems Engineer"
-        },
-        {
-            "title": "Design a Real-Time Ride Hailing Service (Uber / Lyft)",
-            "description": "Design the geospatial matchmaking and dispatch engine for a ride-hailing app. Discuss QuadTree vs Google S2 / Uber H3 spatial indexing, real-time driver telemetry streaming over WebSockets, dynamic surge pricing algorithms, and trip state machines.",
-            "domain": "Backend",
-            "role": "Senior Software Engineer"
-        }
-    ]
+    from scripts.generate_system_design_md import SYSTEM_DESIGN_TOPICS
 
-    inserted = 0
-    for item in sd_questions:
-        res = await db.execute(select(SystemDesignQuestion).filter(SystemDesignQuestion.title == item["title"]))
-        if not res.scalars().first():
-            db.add(SystemDesignQuestion(**item))
+    inserted, updated = 0, 0
+    for topic in SYSTEM_DESIGN_TOPICS:
+        title = topic["title"]
+        domain = topic.get("domain", topic.get("category", "Backend / Distributed Systems"))
+        role = topic.get("role", "Senior Software Engineer")
+
+        desc_parts = [
+            f"> **Summary:** {topic['summary']}\n",
+            "### 1. Requirements & Scope",
+            "**Functional Requirements:**",
+            "\n".join(f"- {r}" for r in topic["functional_reqs"]),
+            "\n**Non-Functional Requirements:**",
+            "\n".join(f"- {r}" for r in topic["non_functional_reqs"]),
+            "\n### 2. Capacity & Back-of-the-Envelope Estimations",
+            topic["estimations"],
+            "\n### 3. High-Level Architecture",
+            topic["architecture_diagram"],
+            "\n### 4. Data Model & Database Design",
+            topic["data_model"]
+        ]
+        if "deep_dive" in topic:
+            desc_parts.extend([
+                "\n### 5. Technical Deep Dive & Key Trade-offs",
+                topic["deep_dive"]
+            ])
+
+        full_description = "\n\n".join(desc_parts)
+
+        res = await db.execute(select(SystemDesignQuestion).filter(SystemDesignQuestion.title == title))
+        existing_q = res.scalars().first()
+
+        if existing_q:
+            existing_q.description = full_description
+            existing_q.domain = domain
+            existing_q.role = role
+            updated += 1
+        else:
+            new_q = SystemDesignQuestion(
+                title=title,
+                description=full_description,
+                domain=domain,
+                role=role
+            )
+            db.add(new_q)
             inserted += 1
 
     await db.commit()
-    logger.info(f"✅ System Design Questions Seeded: {inserted} new questions added.")
+    logger.info(f"✅ System Design Questions Seeded: {inserted} inserted, {updated} updated (Total: {len(SYSTEM_DESIGN_TOPICS)}).")
 
 
 async def seed_behavioral_questions(db):
@@ -141,35 +136,95 @@ async def seed_behavioral_questions(db):
         },
         {
             "title": "Disagreement with Engineering Leadership on Technical Direction",
-            "description": "Describe a situation where you strongly disagreed with a team lead or architect on a technical decision or architecture choice. How did you advocate for your perspective, evaluate trade-offs, and what was the ultimate resolution?",
-            "category": "Have Backbone; Disagree & Commit"
+            "description": "Describe a situation where you strongly disagreed with a team lead, architect, or peer on a technical decision or architecture choice. How did you advocate for your perspective with data, evaluate trade-offs, and what was the ultimate resolution?",
+            "category": "Collaboration & Conflict Resolution"
         },
         {
             "title": "Delivering a Major Feature with Ambiguous Requirements",
-            "description": "Tell me about a high-impact project you delivered where the initial requirements were vague or rapidly changing. How did you define milestones, scope MVPs, align cross-functional teams, and guarantee delivery?",
-            "category": "Deliver Results & Bias for Action"
+            "description": "Tell me about a high-impact project you delivered where the initial requirements were vague or rapidly changing. How did you break down milestones, scope MVPs, align cross-functional stakeholders, and guarantee on-time delivery?",
+            "category": "Execution & Navigating Ambiguity"
         },
         {
-            "title": "Mentoring and Elevating Team Performance",
-            "description": "Share an example where you mentored a junior engineer or helped a struggling teammate succeed. What coaching strategies did you use, and how did it impact the team's engineering velocity?",
-            "category": "People & Leadership"
+            "title": "Overcoming a Project Failure or Critical Mistake",
+            "description": "Can you share an experience where a project failed to meet expectations or a code change caused a significant regression? How did you take ownership of the mistake, communicate with your team, and what concrete lessons did you apply to future projects?",
+            "category": "Accountability & Continuous Learning"
         },
         {
-            "title": "Simplifying a Complex Legacy Architecture",
-            "description": "Describe a time when you identified unnecessary complexity or technical debt in a codebase and proactively simplified it. What was the impact on latency, maintainability, or infrastructure costs?",
+            "title": "Balancing Technical Debt Refactoring vs Tight Product Deadlines",
+            "description": "Describe a time when you had to balance paying down critical technical debt with aggressive product feature deadlines. How did you negotiate priorities with product managers and ensure code health without slowing business momentum?",
+            "category": "Technical Judgment & Prioritization"
+        },
+        {
+            "title": "Pushing Back on Unrealistic Deadlines or Scope Creep",
+            "description": "Tell me about a time when you were asked to deliver an unrealistic project scope within a tight timeframe. How did you push back constructively, present technical constraints, and renegotiate deliverables or timelines?",
+            "category": "Stakeholder Management & Integrity"
+        },
+        {
+            "title": "Mentoring a Teammate and Elevating Engineering Quality",
+            "description": "Share an example where you mentored a junior engineer, paired with a struggling teammate, or elevated engineering quality on your team (e.g., automated testing, code review standards). What coaching approach did you use, and what was the measurable outcome?",
+            "category": "Leadership & Team Enablement"
+        },
+        {
+            "title": "Simplifying Complex Legacy Architecture to Boost Reliability",
+            "description": "Describe a time when you identified unnecessary complexity or fragile legacy code and proactively simplified it. What was your strategy for safe refactoring without downtime, and what was the impact on latency, maintainability, or cloud costs?",
             "category": "Invent & Simplify"
+        },
+        {
+            "title": "Driving Cross-Functional Alignment Across Teams",
+            "description": "Tell me about a project that required close collaboration across multiple engineering squads, product managers, designers, or external vendors. How did you resolve communication bottlenecks and keep everyone aligned toward a common goal?",
+            "category": "Cross-Functional Collaboration"
+        },
+        {
+            "title": "Making High-Impact Architectural Decisions with Incomplete Data",
+            "description": "Describe a scenario where you had to make a critical architectural or toolchain decision with incomplete or imperfect information under a tight deadline. How did you evaluate trade-offs, mitigate downside risks, and validate your choice?",
+            "category": "Bias for Action & Decision Making"
+        },
+        {
+            "title": "Receiving Tough Constructive Feedback and Transforming It",
+            "description": "Can you share a time when you received difficult constructive feedback from a manager, peer, or client? How did you process the feedback, what specific behavior or workflow did you change, and how did it improve your impact?",
+            "category": "Self-Awareness & Growth Mindset"
+        },
+        {
+            "title": "Resolving a Frustrating Team Conflict Amicably",
+            "description": "Tell me about a situation where communication broke down or frustration arose between team members during a high-stress release. How did you de-escalate the tension, foster empathy, and find a productive middle ground?",
+            "category": "Emotional Intelligence & Conflict Management"
+        },
+        {
+            "title": "Going Above and Beyond to Unblock Customers or Team",
+            "description": "Share an example where you took initiative outside your formal job responsibilities to solve an unowned problem, fix a customer pain point, or unblock other engineers. What motivated you and what was the long-term impact?",
+            "category": "Extreme Ownership"
+        },
+        {
+            "title": "Advocating for Security and Scalability Under Pressure",
+            "description": "Describe a situation where there was intense business pressure to cut corners on security, data validation, or testing. How did you champion engineering excellence and ensure system safety without becoming a blocker?",
+            "category": "Engineering Standards & Ethics"
+        },
+        {
+            "title": "Prioritizing Competing Urgent Production Tasks",
+            "description": "Tell me about a day or week where multiple urgent production bugs, customer escalations, and feature deadlines landed on your plate at once. How did you triage, delegate, communicate status, and maintain focus under pressure?",
+            "category": "Time Management & Resilience"
+        },
+        {
+            "title": "Rapidly Mastering a New Technology or Domain to Ship",
+            "description": "Describe a project where you were tasked with building in a completely unfamiliar programming language, framework, or domain on short notice. How did you structure your learning, prototype quickly, and deliver a production-ready solution?",
+            "category": "Learn & Be Curious"
         }
     ]
 
-    inserted = 0
+    inserted, updated = 0, 0
     for item in b_questions:
         res = await db.execute(select(BehavioralQuestion).filter(BehavioralQuestion.title == item["title"]))
-        if not res.scalars().first():
+        existing = res.scalars().first()
+        if existing:
+            existing.description = item["description"]
+            existing.category = item["category"]
+            updated += 1
+        else:
             db.add(BehavioralQuestion(**item))
             inserted += 1
 
     await db.commit()
-    logger.info(f"✅ Behavioral Questions Seeded: {inserted} new questions added.")
+    logger.info(f"✅ Behavioral Questions Seeded: {inserted} inserted, {updated} updated (Total: {len(b_questions)}).")
 
 
 async def seed_pm_questions(db):

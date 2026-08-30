@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,8 +27,21 @@ class NormalizePathMiddleware(BaseHTTPMiddleware):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    
+    # Start RabbitMQ analysis worker in the background
+    analysis_task = None
+    try:
+        from app.analysis_worker import start_worker
+        analysis_task = asyncio.create_task(start_worker())
+    except Exception as e:
+        import logging
+        logging.getLogger("main").error(f"Failed to start analysis worker task: {e}")
+
     yield
-    # Gracefully close shared HTTP client
+    
+    # Graceful shutdown
+    if analysis_task and not analysis_task.done():
+        analysis_task.cancel()
     if not http_client.is_closed:
         await http_client.aclose()
 

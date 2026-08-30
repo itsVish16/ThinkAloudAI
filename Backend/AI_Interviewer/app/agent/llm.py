@@ -64,7 +64,7 @@ async def call_fast_bridge(
     first_token_time = None
     try:
         response = await fast_client.chat.completions.create(
-            model=settings.FAST_LLM_MODEL,
+            model=settings.fast_llm_model,
             messages=formatted,
             max_tokens=settings.FAST_LLM_MAX_TOKENS,
             temperature=0.3,
@@ -123,7 +123,7 @@ async def call_llm(
 
     try:
         response = await main_client.chat.completions.create(
-            model=settings.MAIN_LLM_MODEL,
+            model=settings.main_llm_model,
             messages=formatted_messages,
             temperature=0.4,
             max_tokens=1024,
@@ -227,7 +227,7 @@ async def stream_dual_llm(
     3. The stream_queue receives fast tokens immediately, then seamlessly stitches
        Main LLM's deep technical reasoning without audible gaps.
     """
-    if not settings.DUAL_LLM_ENABLED:
+    if not settings.is_dual_llm_enabled:
         return await call_llm(messages, system_prompt, stream_queue, opik_trace_id, metrics=metrics)
 
     start_time = time.time()
@@ -242,7 +242,7 @@ async def stream_dual_llm(
         formatted_messages = [{"role": "system", "content": system_prompt}] + messages
         try:
             response = await main_client.chat.completions.create(
-                model=settings.MAIN_LLM_MODEL,
+                model=settings.main_llm_model,
                 messages=formatted_messages,
                 temperature=0.4,
                 max_tokens=1024,
@@ -277,6 +277,9 @@ async def stream_dual_llm(
         except Exception as e:
             logger.error(f"Error in background main LLM: {e}")
             main_task_error.append(e)
+            fallback_speech = "I see. Let's keep going with your explanation and code."
+            main_full_tokens.append(fallback_speech)
+            await main_buffer.put(fallback_speech)
         finally:
             await main_buffer.put(None)
             main_done.set()
@@ -345,19 +348,23 @@ async def evaluate_llm(
         pass
 
     start_time = time.time()
-    response = await main_client.chat.completions.create(
-        model=settings.MAIN_LLM_MODEL,
-        messages=formatted_messages,
-        temperature=0.0,
-        max_tokens=1024,
-        response_format={"type": "json_object"},
-    )
+    raw_json = ""
+    try:
+        response = await main_client.chat.completions.create(
+            model=settings.main_llm_model,
+            messages=formatted_messages,
+            temperature=0.0,
+            max_tokens=1024,
+            response_format={"type": "json_object"},
+        )
+        raw_json = response.choices[0].message.content or ""
+    except Exception as e:
+        logger.error(f"Error executing evaluate_llm: {e}")
 
     end_time = time.time()
     eval_latency_ms = (end_time - start_time) * 1000
     logger.info("Evaluation generation time ms=%.2f", eval_latency_ms)
 
-    raw_json = response.choices[0].message.content or ""
     cleaned_json = raw_json.strip()
     match = re.search(r"(\{.*\})", cleaned_json, re.DOTALL)
     if match:

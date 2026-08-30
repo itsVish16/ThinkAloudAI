@@ -4,19 +4,20 @@ import os
 import aio_pika
 from typing import Optional, Dict, Any
 
+from app.config import settings
+
 logger = logging.getLogger(__name__)
 
 _connection: Optional[aio_pika.Connection] = None
 _channel: Optional[aio_pika.Channel] = None
 
-RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/")
-
 async def get_rabbitmq_channel() -> aio_pika.Channel:
     global _connection, _channel
     
+    url = settings.RABBITMQ_URL or "amqp://thinkaloud:thinkaloud_rabbit_secret@localhost:5672/"
     if _connection is None or _connection.is_closed:
-        logger.info(f"Connecting to RabbitMQ at {RABBITMQ_URL}")
-        _connection = await aio_pika.connect_robust(RABBITMQ_URL)
+        logger.info(f"Connecting to RabbitMQ at {url.split('@')[-1] if '@' in url else '...'}")
+        _connection = await aio_pika.connect_robust(url)
         
     if _channel is None or _channel.is_closed:
         _channel = await _connection.channel()

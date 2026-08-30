@@ -32,6 +32,7 @@ dependencies = [
     { name = "pyjwt" },
     { name = "python-dotenv" },
     { name = "redis" },
+    { name = "sarvamai" },
     { name = "sqlalchemy" },
     { name = "uvicorn" },
     { name = "websockets" },
@@ -67,6 +68,7 @@ requires-dist = [
     { name = "pyjwt", specifier = ">=2.8.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "redis", specifier = ">=5.0.0" },
+    { name = "sarvamai", specifier = ">=0.1.30" },
     { name = "sqlalchemy", specifier = ">=2.0.0" },
     { name = "uvicorn", specifier = ">=0.29.0" },
     { name = "websockets", specifier = ">=15.0.1" },
@@ -2899,6 +2901,22 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/4a/d8/0c8a7dc9b41dcac53c4cbf9df2b9c83e0e0097203de8b37a712b345c0be5/safetensors-0.7.0-cp38-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:b0f6d66c1c538d5a94a73aa9ddca8ccc4227e6c9ff555322ea40bdd142391dd4", size = 677368, upload-time = "2025-11-19T15:18:41.627Z" },
     { url = "https://files.pythonhosted.org/packages/05/e5/cb4b713c8a93469e3c5be7c3f8d77d307e65fe89673e731f5c2bfd0a9237/safetensors-0.7.0-cp38-abi3-win32.whl", hash = "sha256:c74af94bf3ac15ac4d0f2a7c7b4663a15f8c2ab15ed0fc7531ca61d0835eccba", size = 326423, upload-time = "2025-11-19T15:18:45.74Z" },
     { url = "https://files.pythonhosted.org/packages/5d/e6/ec8471c8072382cb91233ba7267fd931219753bb43814cbc71757bfd4dab/safetensors-0.7.0-cp38-abi3-win_amd64.whl", hash = "sha256:d1239932053f56f3456f32eb9625590cc7582e905021f94636202a864d470755", size = 341380, upload-time = "2025-11-19T15:18:44.427Z" },
+]
+
+[[package]]
+name = "sarvamai"
+version = "0.1.30"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "pydantic-core" },
+    { name = "typing-extensions" },
+    { name = "websockets" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0a/a3/28325a6abd8e0c83e392bfadb06c1bb6d26cd134de2473e38caae745d8eb/sarvamai-0.1.30.tar.gz", hash = "sha256:e53b78ea695351102e880f727715a94cca4d2c7730d9663160066b7618e964d4", size = 175653, upload-time = "2026-08-03T12:34:05.792Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c5/65/45947ce30e325433e2960f428361e62bd4a69ce422c03c27191300204046/sarvamai-0.1.30-py3-none-any.whl", hash = "sha256:ab586559e041b8dbaa03a536d6c23383f6cda86e9ab9509519408cd54ea66f09", size = 361482, upload-time = "2026-08-03T12:34:04.623Z" },
 ]
 
 [[package]]

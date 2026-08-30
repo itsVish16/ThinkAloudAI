@@ -11,6 +11,7 @@ import {
 import { UsersAnalytics } from '../components/admin/UsersAnalytics';
 import { InterviewsAnalytics } from '../components/admin/InterviewsAnalytics';
 import { CodingAnalytics } from '../components/admin/CodingAnalytics';
+import { TelemetryAnalytics } from '../components/admin/TelemetryAnalytics';
 import '../styles/AdminDashboard.css';
 
 interface AdminDashboardProps {
@@ -19,7 +20,7 @@ interface AdminDashboardProps {
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate, user }) => {
-  const [activeTab, setActiveTab] = useState<'users' | 'interviews' | 'coding'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'interviews' | 'coding' | 'telemetry'>('users');
 
   const isAdmin = Boolean(
     (user?.role && user.role.toLowerCase() === 'admin') ||
@@ -81,6 +82,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate, user
               <Code2 size={16} />
               <span>DSA Catalog &amp; Submissions</span>
             </button>
+            <button 
+              className={`admin-main-tab ${activeTab === 'telemetry' ? 'active' : ''}`}
+              onClick={() => setActiveTab('telemetry')}
+            >
+              <Activity size={16} />
+              <span>Voice Latency &amp; Telemetry</span>
+            </button>
           </div>
         </div>
 
@@ -89,6 +97,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate, user
           {activeTab === 'users' && <UsersAnalytics />}
           {activeTab === 'interviews' && <InterviewsAnalytics />}
           {activeTab === 'coding' && <CodingAnalytics />}
+          {activeTab === 'telemetry' && <TelemetryAnalytics />}
         </div>
       </main>
     </div>

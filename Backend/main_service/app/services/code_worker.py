@@ -5,9 +5,10 @@ import sys
 from aio_pika import connect_robust, IncomingMessage
 from app.config import settings
 from app.database import SessionLocal, redis_client
-from app.models.dsa import CodeSubmission
+from app.models.dsa import CodeSubmission, UserProblemStatus
 from app.services.docker_runner import run_code_in_docker
 from sqlalchemy.future import select
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +32,48 @@ async def process_code_execution(data: dict):
             result = await db.execute(select(CodeSubmission).filter(CodeSubmission.id == submission_id))
             submission = result.scalars().first()
             if submission:
-                submission.status = docker_result.get("status", "Error")
+                status = docker_result.get("status", "Error")
+                exec_time = docker_result.get("execution_time_ms")
+                mem_used = docker_result.get("memory_used_kb")
+
+                submission.status = status
                 submission.error_message = docker_result.get("error_message")
-                submission.execution_time_ms = docker_result.get("execution_time_ms")
-                submission.memory_used_kb = docker_result.get("memory_used_kb")
+                submission.execution_time_ms = exec_time
+                submission.memory_used_kb = mem_used
                 submission.passed_tests = docker_result.get("passed_tests")
                 submission.total_tests = docker_result.get("total_tests")
+
+                # Update UserProblemStatus for formal submissions
+                if submission.is_submission and submission.session_id:
+                    status_res = await db.execute(
+                        select(UserProblemStatus).filter(
+                            UserProblemStatus.user_id == submission.session_id,
+                            UserProblemStatus.question_id == submission.question_id
+                        )
+                    )
+                    user_status = status_res.scalars().first()
+                    new_status_str = "Solved" if status == "Accepted" else "Attempted"
+
+                    if not user_status:
+                        user_status = UserProblemStatus(
+                            user_id=submission.session_id,
+                            question_id=submission.question_id,
+                            status=new_status_str,
+                            best_runtime_ms=exec_time if status == "Accepted" else None,
+                            best_memory_kb=mem_used if status == "Accepted" else None,
+                            last_attempted_at=datetime.now(timezone.utc)
+                        )
+                        db.add(user_status)
+                    else:
+                        if new_status_str == "Solved" or user_status.status != "Solved":
+                            user_status.status = new_status_str
+                        user_status.last_attempted_at = datetime.now(timezone.utc)
+                        if status == "Accepted":
+                            if user_status.best_runtime_ms is None or (exec_time and exec_time < user_status.best_runtime_ms):
+                                user_status.best_runtime_ms = exec_time
+                            if user_status.best_memory_kb is None or (mem_used and mem_used < user_status.best_memory_kb):
+                                user_status.best_memory_kb = mem_used
+
                 await db.commit()
 
         await redis_client.publish(f"submission_updates_{submission_id}", json.dumps(docker_result))
@@ -86,8 +123,8 @@ async def handle_code_message(message: IncomingMessage, semaphore: asyncio.Semap
                 logger.error(f"Malformed JSON in code execution queue message: {e}")
                 await message.reject(requeue=False)
             except Exception as e:
-                logger.error(f"Error executing code task: {e}")
-                await message.reject(requeue=True)
+                logger.error(f"Fatal error executing code task: {e}")
+                await message.reject(requeue=False)
 
     if span_cm:
         with span_cm as span:

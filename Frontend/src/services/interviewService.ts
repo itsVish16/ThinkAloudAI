@@ -71,3 +71,15 @@ export async function getInterviewAnalytics(token: string): Promise<any> {
   }
   return response.json();
 }
+
+export async function getInterviewSessionMetrics(token: string, roomName: string): Promise<any> {
+  const response = await apiClient.fetchWithAuth(`${API_URL}/api/interview/${roomName}/metrics`, {
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+  if (!response.ok) {
+    throw new Error('Failed to fetch interview metrics');
+  }
+  return response.json();
+}

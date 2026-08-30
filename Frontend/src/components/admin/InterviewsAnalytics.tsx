@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import type { InterviewStats, InterviewListItem, InterviewSessionAudit } from '../../services/adminService';
+import { computeUnifiedInterviewScore } from '../../utils/interviewScore';
 
 interface InterviewsAnalyticsProps {
   initialStats?: InterviewStats;
@@ -358,21 +359,29 @@ export const InterviewsAnalytics: React.FC<InterviewsAnalyticsProps> = ({ initia
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-6">
                     <div>
-                      <span className="text-xs text-gray-400 block">Technical Score</span>
+                      <span className="text-xs text-gray-400 block">Overall Score</span>
+                      <span className="text-xl font-bold text-white font-mono">
+                        {computeUnifiedInterviewScore(selectedAudit, selectedAudit.interview_type) !== null
+                          ? `${computeUnifiedInterviewScore(selectedAudit, selectedAudit.interview_type)}/100`
+                          : '-/100'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-xs text-gray-400 block">Technical</span>
                       <span className="text-xl font-bold text-orange-400 font-mono">
-                        {selectedAudit.feedback?.technical_score || '-'}/100
+                        {selectedAudit.feedback?.technical_score ?? '-'}/100
                       </span>
                     </div>
                     <div>
                       <span className="text-xs text-gray-400 block">Communication</span>
                       <span className="text-xl font-bold text-orange-400 font-mono">
-                        {selectedAudit.feedback?.communication_score || '-'}/100
+                        {selectedAudit.feedback?.communication_score ?? '-'}/100
                       </span>
                     </div>
                     <div>
                       <span className="text-xs text-gray-400 block">English Clarity</span>
                       <span className="text-xl font-bold text-orange-400 font-mono">
-                        {selectedAudit.feedback?.english_score || '-'}/100
+                        {selectedAudit.feedback?.english_score ?? '-'}/100
                       </span>
                     </div>
                   </div>

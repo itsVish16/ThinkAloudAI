@@ -48,7 +48,7 @@ class RoadmapCreate(RoadmapBase):
 
 class RoadmapOut(RoadmapBase):
     id: int
-    user_id: str
+    user_id: Optional[str] = None
     created_at: datetime
     topics: List[RoadmapTopicOut] = Field(default_factory=list)
 

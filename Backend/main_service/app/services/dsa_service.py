@@ -5,6 +5,7 @@ from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import or_
 from redis.asyncio import Redis
 
 from app.models.dsa import DSAQuestion, CodeSubmission, UserProblemStatus, Recommendation
@@ -42,7 +43,7 @@ class DSAService:
 
         def _serialize(q):
             data = DSAQuestionOut.model_validate(q).model_dump()
-            data["created_at"] = data["created_at"].isoformat()
+            data["created_at"] = data["created_at"].isoformat() if data.get("created_at") else None
             return data
 
         serialized_q = [_serialize(q) for q in questions]

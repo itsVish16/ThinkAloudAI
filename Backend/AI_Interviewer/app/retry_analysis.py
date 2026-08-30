@@ -1,6 +1,7 @@
 import asyncio
 import json
-from app.services.db import AsyncSessionLocal, InterviewSession
+from app.services.db import AsyncSessionLocal
+from app.models.interview import InterviewSession
 from app.services.analysis import analyze_and_save_interview
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload

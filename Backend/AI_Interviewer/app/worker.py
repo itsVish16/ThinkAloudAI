@@ -18,8 +18,16 @@ from app.config import settings
 from app.services.db import get_interview_session, save_interview_session
 from app.services.events import publish_interview_completed
 from app.services.telemetry import TurnMetrics, get_opik_client
-
+load_dotenv(".env")
+load_dotenv("../.env")
 load_dotenv(".env.local", override=True)
+
+if settings.LIVEKIT_URL:
+    os.environ.setdefault("LIVEKIT_URL", settings.LIVEKIT_URL)
+if settings.LIVEKIT_API_KEY:
+    os.environ.setdefault("LIVEKIT_API_KEY", settings.LIVEKIT_API_KEY)
+if settings.LIVEKIT_API_SECRET:
+    os.environ.setdefault("LIVEKIT_API_SECRET", settings.LIVEKIT_API_SECRET)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("interview_worker")
@@ -69,6 +77,34 @@ def serialize_state_safely(state: dict) -> dict:
     return clean_state
 
 
+def clean_display_name(raw_name: Optional[str]) -> str:
+    import re
+    if not raw_name:
+        return "Candidate"
+    raw_name = str(raw_name).strip()
+    if "@" in raw_name:
+        raw_name = raw_name.split("@")[0]
+    cleaned = re.sub(r"\d+", "", raw_name).strip()
+    cleaned = re.sub(r"[._\-+]+", " ", cleaned).strip()
+    cleaned = re.sub(r"([a-z])([A-Z])", r"\1 \2", cleaned)
+    
+    common_surnames = [
+        "saini", "kumar", "singh", "sharma", "gupta", "verma", "patel", "shah", 
+        "reddy", "rao", "mehta", "jain", "das", "roy", "sen", "mishra", "joshi", 
+        "bhat", "nair", "khan", "ali", "ahmed", "smith", "johnson", "williams"
+    ]
+    if " " not in cleaned and len(cleaned) > 5:
+        lower = cleaned.lower()
+        for surname in common_surnames:
+            if lower.endswith(surname) and len(lower) > len(surname):
+                first = lower[:-len(surname)]
+                cleaned = f"{first} {surname}"
+                break
+
+    cleaned = cleaned.title().strip()
+    return cleaned or "Candidate"
+
+
 class InterviewAgent(Agent):
     def __init__(self, room, room_id: str, candidate_name: str, user_id: str, interview_type: str, ai_selected_questions: list = None, session_data: dict = None):
         super().__init__(
@@ -78,7 +114,7 @@ class InterviewAgent(Agent):
         )
         self.room = room
         self.room_id = room_id
-        self.candidate_name = candidate_name
+        self.candidate_name = clean_display_name(candidate_name)
         self.user_id = user_id
         self.interview_type = interview_type
         self.turn_lock = asyncio.Lock()
@@ -125,7 +161,6 @@ class InterviewAgent(Agent):
                 "active_question_index": 0,
                 "latest_code": None,
                 "latest_execution": None,
-                "latest_execution": None,
                 "latest_whiteboard_context": None,
                 "opik_trace_id": self.room_id,
                 "turns_in_stage": 0,
@@ -140,25 +175,31 @@ class InterviewAgent(Agent):
         self.latest_execution = self.state.get("latest_execution")
         
         # If we didn't get questions from the participant metadata token, 
-        # try to fallback to the existing state (if resuming a session).
-        if not self.ai_selected_questions:
-            self.ai_selected_questions = self.state.get("ai_selected_questions") or []
+        # fallback to the preloaded ones from the worker!
+        if not self.ai_selected_questions and self.state.get("ai_selected_questions"):
+            self.ai_selected_questions = self.state.get("ai_selected_questions")
+            
+        # Compile LangGraph
+        self.graph = build_graph()
 
-        self.last_interaction_time = time.time()
-
-    async def background_evaluate(self):
+    async def evaluate_turn(self):
+        """Runs the LangGraph evaluate_and_route node asynchronously in the background."""
         try:
-            eval_result = await evaluate_and_route(self.state)
-            if eval_result:
-                self.state.update(eval_result)
+            from app.agent.graphs.base import evaluate_and_route
+            # Pass full state copy
+            eval_state = dict(self.state)
+            eval_res = await evaluate_and_route(eval_state)
+            if eval_res:
+                self.state.update(eval_res)
                 
-                # Sync instance-level question index from state (managed by evaluate_and_route)
+                # Check if question index changed
                 new_idx = self.state.get("active_question_index", 0)
                 if new_idx != getattr(self, "_last_question_index", 0):
                     self._last_question_index = new_idx
                     logger.info(f"Advancing to question {new_idx + 1}. Sending next_question DataChannel.")
                     payload = json.dumps({"type": "next_question", "question_index": new_idx})
-                    await self.room.local_participant.publish_data(payload.encode("utf-8"))
+                    if self.room and self.room.local_participant:
+                        await self.room.local_participant.publish_data(payload.encode("utf-8"))
                 
                 logger.info(f"Background evaluation completed. Next stage: {self.state['stage']}")
 
@@ -171,7 +212,8 @@ class InterviewAgent(Agent):
                 if self.state["stage"] in core_stages:
                     # Notify frontend that the problem should be revealed
                     payload = json.dumps({"type": "reveal_problem"})
-                    await self.room.local_participant.publish_data(payload.encode("utf-8"))
+                    if self.room and self.room.local_participant:
+                        await self.room.local_participant.publish_data(payload.encode("utf-8"))
                 # Prepare state copy with robust serialization for Postgres persistence
                 state_to_save = serialize_state_safely(self.state)
 
@@ -185,6 +227,8 @@ class InterviewAgent(Agent):
                 )
         except Exception as e:
             logger.error(f"Error in background evaluation: {e}")
+
+    background_evaluate = evaluate_turn
 
     async def trigger_termination(self):
         """Called when the LLM decides the interview is naturally over."""
@@ -307,6 +351,41 @@ class InterviewAgent(Agent):
             last_resp = assistant_messages[-1]["content"] if assistant_messages else ""
             metrics.record_turn_completed(last_resp)
 
+            # Persist comprehensive turn metrics into session state
+            if "turn_metrics_history" not in self.state or not isinstance(self.state["turn_metrics_history"], list):
+                self.state["turn_metrics_history"] = []
+            
+            turn_data = metrics.to_dict()
+            self.state["turn_metrics_history"].append(turn_data)
+
+            # Compute running telemetry aggregates
+            history = self.state["turn_metrics_history"]
+            e2e_vals = [t["e2e_response_latency_ms"] for t in history if t.get("e2e_response_latency_ms")]
+            fast_ttfts = [t["fast_llm"]["ttft_ms"] for t in history if t.get("fast_llm", {}).get("ttft_ms")]
+            main_ttfts = [t["main_llm"]["ttft_ms"] for t in history if t.get("main_llm", {}).get("ttft_ms")]
+            durations = [t["total_turn_duration_ms"] for t in history if t.get("total_turn_duration_ms")]
+
+            self.state["telemetry_summary"] = {
+                "total_turns": len(history),
+                "avg_e2e_latency_ms": round(sum(e2e_vals) / len(e2e_vals), 1) if e2e_vals else 0,
+                "min_e2e_latency_ms": min(e2e_vals) if e2e_vals else 0,
+                "max_e2e_latency_ms": max(e2e_vals) if e2e_vals else 0,
+                "avg_main_llm_ttft_ms": round(sum(main_ttfts) / len(main_ttfts), 1) if main_ttfts else 0,
+                "avg_fast_llm_ttft_ms": round(sum(fast_ttfts) / len(fast_ttfts), 1) if fast_ttfts else 0,
+                "avg_turn_duration_ms": round(sum(durations) / len(durations), 1) if durations else 0,
+            }
+
+            # Persist updated state with telemetry history to PostgreSQL
+            state_to_save = serialize_state_safely(self.state)
+            asyncio.create_task(save_interview_session(
+                session_id=self.room_id,
+                user_id=self.user_id,
+                candidate_name=self.candidate_name,
+                interview_type=self.interview_type,
+                stage=self.state["stage"],
+                state_data=state_to_save
+            ))
+
         except asyncio.CancelledError:
             logger.info("Agent turn was interrupted by the user! Cancelling generation...")
             # Unblock the queue_generator so TTS stops waiting
@@ -349,18 +428,17 @@ async def entrypoint(ctx: agents.JobContext):
     sarvam_key = (settings.SARVAM_API_KEY or os.getenv("SARVAM_API_KEY", "")).strip()
 
     if sarvam_key and not sarvam_key.startswith("<"):
-        logger.info(f"Initializing Sarvam AI STT ({settings.SARVAM_STT_MODEL}) and WebSocket TTS ({settings.SARVAM_TTS_MODEL}, speaker={settings.SARVAM_TTS_SPEAKER})")
+        logger.info(f"Initializing Sarvam Realtime STT (saaras:v3-realtime) and WebSocket TTS ({settings.SARVAM_TTS_MODEL}, speaker={settings.SARVAM_TTS_SPEAKER})")
+        from app.services.sarvam_stt import SarvamRealtimeSTT
         from livekit.plugins import sarvam
-        stt_kwargs = {
-            "api_key": sarvam_key,
-            "model": settings.SARVAM_STT_MODEL,
-            "language": settings.SARVAM_STT_LANGUAGE,
-            "mode": "transcribe",
-            "prompt": "",
-        }
-        if settings.SARVAM_STT_URL:
-            stt_kwargs["base_url"] = settings.SARVAM_STT_URL
-        stt = sarvam.STT(**stt_kwargs)
+        stt = SarvamRealtimeSTT(
+            api_key=sarvam_key,
+            language=settings.SARVAM_STT_LANGUAGE,
+            model="saaras:v3-realtime",
+            mode=settings.SARVAM_STT_MODE,
+            stream_type="balanced",
+            sample_rate=16000,
+        )
         tts = sarvam.TTS(
             api_key=sarvam_key,
             model=settings.SARVAM_TTS_MODEL,
@@ -520,7 +598,7 @@ async def entrypoint(ctx: agents.JobContext):
     def on_track_subscribed(track, publication, participant):
         from livekit import rtc
         if track.kind == rtc.TrackKind.KIND_VIDEO:
-            if publication.source == rtc.TrackSource.SOURCE_SCREEN_SHARE:
+            if getattr(publication, "source", None) == getattr(rtc.TrackSource, "SOURCE_SCREENSHARE", None):
                 logger.info("Screen share track subscribed! Starting background whiteboard vision task.")
                 asyncio.create_task(video_processing_task(track, agent, is_whiteboard=True))
             else:
@@ -542,6 +620,10 @@ async def entrypoint(ctx: agents.JobContext):
                 agent.latest_code = msg.get("content")
                 agent.state["latest_code"] = agent.latest_code
                 logger.info("Received candidate design update.")
+            elif msg_type == "whiteboard_graph":
+                agent.latest_whiteboard_graph = msg.get("graph")
+                agent.state["latest_whiteboard_graph"] = agent.latest_whiteboard_graph
+                logger.info(f"Received real-time whiteboard graph: {agent.latest_whiteboard_graph}")
             elif msg_type == "code_execution":
                 agent.latest_execution = msg.get("execution")
                 agent.state["latest_execution"] = agent.latest_execution
@@ -628,8 +710,8 @@ async def entrypoint(ctx: agents.JobContext):
                     except Exception as e:
                         logger.error(f"Error in silence monitor task: {e}")
             elif agent_instance.state.get("stage") == "wrap_up" and agent_instance.wrap_up_spoken:
-                if time.time() - agent_instance.last_interaction_time > 15:
-                    logger.info("Silence timeout in wrap up. Disconnecting.")
+                if time.time() - agent_instance.last_interaction_time > 180:
+                    logger.info("Long silence timeout reached after wrap up (180s). Concluding session.")
                     asyncio.create_task(agent_instance.trigger_termination())
 
     @ctx.room.on("disconnected")
@@ -686,31 +768,25 @@ async def entrypoint(ctx: agents.JobContext):
 
     # Greets the user immediately if it's a new session
     if not agent.state["messages"]:
-        logger.info("Session is new (no messages). Waiting 1.5 seconds for client connection stability...")
-        await asyncio.sleep(1.5)
-        logger.info("Generating initial greeting...")
-        queue = asyncio.Queue()
-        agent.state["stream_queue"] = queue
-        try:
-            speech_handle = session.say(queue_generator(queue))
-        except RuntimeError as e:
-            logger.warning(f"Could not say initial greeting because session ended: {e}")
-            return
+        logger.info("Session is new (no messages). Waiting 1.0 second for client connection stability...")
+        await asyncio.sleep(1.0)
+        logger.info("Delivering direct initial greeting...")
 
-        # Seed with a clean user entry message
-        agent.state["messages"].append({"role": "user", "content": f"Hi Aarav, I am {agent.candidate_name} and I have joined the interview room."})
+        norm_type = agent.interview_type.replace("_", " ").title()
+        if "Dsa" in norm_type:
+            norm_type = "Data Structures and Algorithms"
 
+        greeting_text = (
+            f"Hi {agent.candidate_name}! Welcome, I am Aarav, your technical interviewer today from ThinkAloudAI. "
+            f"I will be conducting your {norm_type} session. Before we begin, can you hear and see me clearly?"
+        )
+
+        agent.state["messages"] = [{"role": "assistant", "content": greeting_text}]
         agent.state["ai_selected_questions"] = agent.ai_selected_questions
         agent.state["latest_code"] = agent.latest_code
         agent.state["latest_execution"] = agent.latest_execution
 
-        updated_state = await agent.interview_agent.ainvoke(agent.state)
-        agent.state = updated_state
-        
-        # Prepare state copy without the non-serializable queue for Postgres persistence
-        state_to_save = agent.state.copy()
-        state_to_save.pop("stream_queue", None)
-
+        state_to_save = serialize_state_safely(agent.state)
         await save_interview_session(
             session_id=agent.room_id,
             user_id=agent.user_id,
@@ -719,7 +795,14 @@ async def entrypoint(ctx: agents.JobContext):
             stage=agent.state["stage"],
             state_data=state_to_save
         )
-        await speech_handle
+
+        try:
+            logger.info(f"Speaking initial greeting to candidate: '{greeting_text}'")
+            speech_handle = session.say(greeting_text)
+            await speech_handle
+            logger.info("Initial greeting delivered successfully.")
+        except Exception as e:
+            logger.warning(f"Could not say initial greeting: {e}", exc_info=True)
     else:
         logger.info(f"Session is already existing with {len(agent.state['messages'])} messages.")
         # If the last message was from the assistant, replay it so the user knows we are connected
@@ -737,5 +820,10 @@ if __name__ == "__main__":
     get_vlm_service()
     
     agents.cli.run_app(
-        agents.WorkerOptions(entrypoint_fnc=entrypoint)
+        agents.WorkerOptions(
+            entrypoint_fnc=entrypoint,
+            ws_url=settings.LIVEKIT_URL,
+            api_key=settings.LIVEKIT_API_KEY,
+            api_secret=settings.LIVEKIT_API_SECRET,
+        )
     )

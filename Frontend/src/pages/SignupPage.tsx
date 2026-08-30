@@ -30,8 +30,10 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onNavigate, onSignupSucc
     setSuccessMessage(null);
 
     try {
-      const usernameBase = email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '');
-      const username = `${usernameBase}${Math.floor(Math.random() * 1000)}`.substring(0, 30);
+      let cleanBase = email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '').toLowerCase();
+      cleanBase = cleanBase.replace(/^[0-9_]+/, '');
+      if (cleanBase.length < 2) cleanBase = 'candidate';
+      const username = `${cleanBase}_${Math.floor(1000 + Math.random() * 9000)}`.substring(0, 30);
       const fullName = `${firstName} ${lastName}`.trim();
       
       await authService.signup({ 

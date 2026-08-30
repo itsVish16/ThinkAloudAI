@@ -65,11 +65,14 @@ async def get_current_user(request: Request) -> dict:
         if not user_id:
             raise credentials_exception
             
+        username = payload.get("username") or payload.get("email", "").split("@")[0] or "Candidate"
+        full_name = payload.get("full_name") or payload.get("name") or username
+
         return {
             "user_id": str(user_id),
             "email": payload.get("email", "unknown@domain.com"),
-            "username": payload.get("username", "user"),
-            "full_name": payload.get("full_name", "User"),
+            "username": username,
+            "full_name": full_name,
             "is_verified": payload.get("is_verified", True),
             "raw_token": token
         }

@@ -15,7 +15,7 @@ class Config(BaseSettings):
 
     # Sarvam AI Unified Config (TTS, STT, and LLM)
     SARVAM_API_KEY: Optional[str] = None
-    SARVAM_BASE_URL: str = "https://api.sarvam.ai/v1"
+    SARVAM_BASE_URL: str = "https://api.sarvam.ai/v2"
     SARVAM_MODEL: str = "gemma4"
     SARVAM_TTS_MODEL: str = "bulbul:v3"
     SARVAM_TTS_SPEAKER: str = "shubh"
@@ -23,23 +23,25 @@ class Config(BaseSettings):
     SARVAM_TTS_PACE: float = 1.0
     SARVAM_TTS_SAMPLE_RATE: int = 22050
     SARVAM_TTS_WS_URL: str = "wss://api.sarvam.ai/text-to-speech/ws"
-    SARVAM_STT_MODEL: str = "saarika:v2.5"
+    SARVAM_STT_MODEL: str = "saaras:v3"
+    SARVAM_STT_MODE: str = "transcribe"
     SARVAM_STT_LANGUAGE: str = "en-IN"
     SARVAM_STT_URL: Optional[str] = None
+    SARVAM_STT_STREAMING_URL: str = "wss://api.sarvam.ai/speech-to-text/ws"
 
-    # Single Fast LLM Mode (Defaults to Sarvam gemma4 for ultra low-latency)
+    # Single Fast LLM Mode (Ultra low-latency using gemma4 without fillers)
     DUAL_LLM_ENABLED: bool = False
 
     # Fast Responder LLM
     FAST_LLM_API_KEY: str = ""
     FAST_LLM_MODEL: str = "gemma4"
-    FAST_LLM_BASE_URL: str = "https://api.sarvam.ai/v1"
+    FAST_LLM_BASE_URL: str = "https://api.sarvam.ai/v2"
     FAST_LLM_MAX_TOKENS: int = 60
 
     # Main Reasoning LLM (Defaults to Sarvam gemma4)
     MAIN_LLM_API_KEY: str = ""
     MAIN_LLM_MODEL: str = "gemma4"
-    MAIN_LLM_BASE_URL: str = "https://api.sarvam.ai/v1"
+    MAIN_LLM_BASE_URL: str = "https://api.sarvam.ai/v2"
 
     # Fireworks AI / DeepSeek for Background Post-Interview Analysis & Grading
     FIREWORKS_API_KEY: str = ""
@@ -52,8 +54,8 @@ class Config(BaseSettings):
 
     # Legacy fallback LLM Settings (OpenAI-compatible)
     LLM_API_KEY: str = ""
-    LLM_MODEL: str = "sarvam-105b"
-    LLM_BASE_URL: str = "https://api.sarvam.ai/v1"
+    LLM_MODEL: str = "gemma4"
+    LLM_BASE_URL: str = "https://api.sarvam.ai/v2"
 
     # External User Service Config
     USER_SERVICE_URL: str = "http://localhost:8000"
@@ -90,7 +92,17 @@ class Config(BaseSettings):
 
     @property
     def fast_llm_url(self) -> str:
-        return self.FAST_LLM_BASE_URL or self.SARVAM_BASE_URL or self.LLM_BASE_URL
+        url = self.FAST_LLM_BASE_URL or self.SARVAM_BASE_URL or self.LLM_BASE_URL
+        if "sarvam.ai" in url:
+            if self.fast_llm_model in ("gemma4", "glm5.2"):
+                return "https://api.sarvam.ai/v2"
+            elif self.fast_llm_model in ("sarvam-105b", "sarvam-105b-conversations"):
+                return "https://api.sarvam.ai/v1"
+        return url
+
+    @property
+    def fast_llm_model(self) -> str:
+        return self.FAST_LLM_MODEL or self.SARVAM_MODEL or "gemma4"
 
     @property
     def main_llm_key(self) -> str:
@@ -98,7 +110,21 @@ class Config(BaseSettings):
 
     @property
     def main_llm_url(self) -> str:
-        return self.MAIN_LLM_BASE_URL or self.SARVAM_BASE_URL or self.LLM_BASE_URL
+        url = self.MAIN_LLM_BASE_URL or self.SARVAM_BASE_URL or self.LLM_BASE_URL
+        if "sarvam.ai" in url:
+            if self.main_llm_model in ("gemma4", "glm5.2"):
+                return "https://api.sarvam.ai/v2"
+            elif self.main_llm_model in ("sarvam-105b", "sarvam-105b-conversations"):
+                return "https://api.sarvam.ai/v1"
+        return url
+
+    @property
+    def main_llm_model(self) -> str:
+        return self.MAIN_LLM_MODEL or self.SARVAM_MODEL or "gemma4"
+
+    @property
+    def is_dual_llm_enabled(self) -> bool:
+        return self.DUAL_LLM_ENABLED
 
     @property
     def analysis_llm_key(self) -> str:

@@ -76,6 +76,10 @@ async def get_code_submissions(session_id: str) -> str:
                     formatted += f"--- Submission {i+1} ---\n"
                     formatted += f"Language: {sub.get('language')}\n"
                     formatted += f"Status: {sub.get('status')}\n"
+                    if sub.get('passed_tests') is not None and sub.get('total_tests') is not None:
+                        formatted += f"Test Cases Passed: {sub.get('passed_tests')} / {sub.get('total_tests')}\n"
+                    if sub.get('execution_time_ms'):
+                        formatted += f"Execution Runtime: {sub.get('execution_time_ms')} ms\n"
                     if sub.get('error_message'):
                         formatted += f"Error: {sub.get('error_message')}\n"
                     formatted += f"Code:\n{sub.get('code')}\n\n"
@@ -123,45 +127,45 @@ async def analyze_and_save_interview(session_id: str, user_id: str, candidate_na
     
     i_type = interview_type.lower()
     if "system_design" in i_type or "sd" in i_type:
-        schema_str = """{{
+        schema_str = """{
         "requirements_gathering": <int 0-100>,
         "high_level_architecture": <int 0-100>,
         "scalability_and_capacity": <int 0-100>,
         "trade_off_reasoning": <int 0-100>,
         "communication": <int 0-100>
-    }}"""
+    }"""
     elif "behavioral" in i_type or "hr" in i_type:
-        schema_str = """{{
+        schema_str = """{
         "star_structure": <int 0-100>,
         "specificity": <int 0-100>,
         "ownership_and_impact": <int 0-100>,
         "clarity": <int 0-100>,
         "conciseness": <int 0-100>
-    }}"""
+    }"""
     elif "pm" in i_type or "product" in i_type:
-        schema_str = """{{
+        schema_str = """{
         "user_empathy_and_scoping": <int 0-100>,
         "product_sense_and_vision": <int 0-100>,
         "prioritization_framework": <int 0-100>,
         "metrics_and_tradeoffs": <int 0-100>,
         "communication": <int 0-100>
-    }}"""
+    }"""
     elif any(k in i_type for k in ["ai_ml", "ml-engineer", "agentic-ai", "machine_learning"]):
-        schema_str = """{{
+        schema_str = """{
         "ml_fundamentals": <int 0-100>,
         "model_selection": <int 0-100>,
         "data_processing": <int 0-100>,
         "system_architecture": <int 0-100>,
         "communication": <int 0-100>
-    }}"""
+    }"""
     else:
-        schema_str = """{{
+        schema_str = """{
         "algorithms": <int 0-100>,
         "time_complexity": <int 0-100>,
         "edge_cases": <int 0-100>,
         "optimization": <int 0-100>,
         "code_quality": <int 0-100>
-    }}"""
+    }"""
 
     prompt = POST_INTERVIEW_ANALYSIS_PROMPT.format(
         interview_type=interview_type,
@@ -250,82 +254,79 @@ async def analyze_and_save_interview(session_id: str, user_id: str, candidate_na
             except Exception: pass
         return
 
-    try:
-        detailed_metrics = {
-            "hiring_decision": data.get("hiring_decision", "Borderline"),
-            "executive_summary": data.get("executive_summary", ""),
-            "technical_breakdown": data.get("technical_breakdown", {}),
-            "communication_breakdown": data.get("communication_breakdown", {}),
-            "speaking_analytics": speaking_analytics
-        }
-        
-        # Save to DB (idempotent — update if feedback already exists)
-        from sqlalchemy import select
-        async with AsyncSessionLocal() as db:
-            existing = (await db.execute(
-                select(InterviewFeedback).where(InterviewFeedback.session_id == session_id)
-            )).scalar_one_or_none()
+    # Domain-weighted overall score
+    tech = data.get("technical_score", 0)
+    comm = data.get("communication_score", 0)
+    eng = data.get("english_score", 0)
 
-            if existing:
-                logger.info(f"Feedback already exists for {session_id}, updating.")
-                existing.technical_score = data.get("technical_score", 0)
-                existing.communication_score = data.get("communication_score", 0)
-                existing.english_score = data.get("english_score", 0)
-                existing.strengths = json.dumps(data.get("strengths", []))
-                existing.weaknesses = json.dumps(data.get("weaknesses", []))
-                existing.improvement_plan = json.dumps(data.get("improvement_plan", []))
-                existing.recommended_topics = data.get("recommended_topics", [])
-                existing.detailed_metrics = detailed_metrics
-            else:
-                feedback = InterviewFeedback(
-                    session_id=session_id,
-                    technical_score=data.get("technical_score", 0),
-                    communication_score=data.get("communication_score", 0),
-                    english_score=data.get("english_score", 0),
-                    strengths=json.dumps(data.get("strengths", [])),
-                    weaknesses=json.dumps(data.get("weaknesses", [])),
-                    improvement_plan=json.dumps(data.get("improvement_plan", [])),
-                    recommended_topics=data.get("recommended_topics", []),
-                    detailed_metrics=detailed_metrics
-                )
-                db.add(feedback)
-            await db.commit()
-            
-        logger.info(f"Successfully saved feedback for session {session_id}")
-        
-        # Domain-weighted overall score
-        tech = data.get("technical_score", 0)
-        comm = data.get("communication_score", 0)
-        eng = data.get("english_score", 0)
+    i_type_clean = (interview_type or "").lower()
+    if any(k in i_type_clean for k in ["dsa", "swe", "coding"]):
+        overall_score = round(0.60 * tech + 0.25 * comm + 0.15 * eng)
+    elif any(k in i_type_clean for k in ["system_design", "sd"]):
+        overall_score = round(0.55 * tech + 0.30 * comm + 0.15 * eng)
+    elif any(k in i_type_clean for k in ["behavioral", "hr"]):
+        overall_score = round(0.20 * tech + 0.70 * comm + 0.10 * eng)
+    elif any(k in i_type_clean for k in ["pm", "product"]):
+        overall_score = round(0.55 * tech + 0.35 * comm + 0.10 * eng)
+    elif any(k in i_type_clean for k in ["ai", "ml"]):
+        overall_score = round(0.60 * tech + 0.25 * comm + 0.15 * eng)
+    else:
+        overall_score = round(0.40 * tech + 0.40 * comm + 0.20 * eng)
 
-        i_type_clean = interview_type.lower()
-        if any(k in i_type_clean for k in ["dsa", "swe", "coding"]):
-            overall_score = round(0.60 * tech + 0.25 * comm + 0.15 * eng)
-        elif any(k in i_type_clean for k in ["system_design", "sd"]):
-            overall_score = round(0.55 * tech + 0.30 * comm + 0.15 * eng)
-        elif any(k in i_type_clean for k in ["behavioral", "hr"]):
-            overall_score = round(0.20 * tech + 0.70 * comm + 0.10 * eng)
-        elif any(k in i_type_clean for k in ["pm", "product"]):
-            overall_score = round(0.55 * tech + 0.35 * comm + 0.10 * eng)
-        elif any(k in i_type_clean for k in ["ai", "ml"]):
-            overall_score = round(0.60 * tech + 0.25 * comm + 0.15 * eng)
+    detailed_metrics = {
+        "overall_score": overall_score,
+        "hiring_decision": data.get("hiring_decision", "Borderline"),
+        "executive_summary": data.get("executive_summary", ""),
+        "technical_breakdown": data.get("technical_breakdown", {}),
+        "communication_breakdown": data.get("communication_breakdown", {}),
+        "speaking_analytics": speaking_analytics
+    }
+    
+    # Save to DB (idempotent — update if feedback already exists)
+    from sqlalchemy import select
+    async with AsyncSessionLocal() as db:
+        existing = (await db.execute(
+            select(InterviewFeedback).where(InterviewFeedback.session_id == session_id)
+        )).scalar_one_or_none()
+
+        if existing:
+            logger.info(f"Feedback already exists for {session_id}, updating.")
+            existing.technical_score = data.get("technical_score", 0)
+            existing.communication_score = data.get("communication_score", 0)
+            existing.english_score = data.get("english_score", 0)
+            existing.strengths = json.dumps(data.get("strengths", []))
+            existing.weaknesses = json.dumps(data.get("weaknesses", []))
+            existing.improvement_plan = json.dumps(data.get("improvement_plan", []))
+            existing.recommended_topics = data.get("recommended_topics", [])
+            existing.detailed_metrics = detailed_metrics
         else:
-            overall_score = round(0.40 * tech + 0.40 * comm + 0.20 * eng)
+            feedback = InterviewFeedback(
+                session_id=session_id,
+                technical_score=data.get("technical_score", 0),
+                communication_score=data.get("communication_score", 0),
+                english_score=data.get("english_score", 0),
+                strengths=json.dumps(data.get("strengths", [])),
+                weaknesses=json.dumps(data.get("weaknesses", [])),
+                improvement_plan=json.dumps(data.get("improvement_plan", [])),
+                recommended_topics=data.get("recommended_topics", []),
+                detailed_metrics=detailed_metrics
+            )
+            db.add(feedback)
+        await db.commit()
         
-        await publish_interview_completed(
-            session_id=session_id,
-            user_id=user_id,
-            candidate_name=candidate_name,
-            domain=interview_type,
-            overall_score=overall_score,
-            interview_type=interview_type,
-            technical_score=data.get("technical_score"),
-            communication_score=data.get("communication_score"),
-            english_score=data.get("english_score"),
-        )
-        
-    except Exception as e:
-        logger.error(f"Failed to analyze and save interview for session {session_id}: {e}")
+    logger.info(f"Successfully saved feedback for session {session_id}")
+    
+    await publish_interview_completed(
+        session_id=session_id,
+        user_id=user_id,
+        candidate_name=candidate_name,
+        domain=interview_type,
+        overall_score=overall_score,
+        interview_type=interview_type,
+        technical_score=data.get("technical_score"),
+        communication_score=data.get("communication_score"),
+        english_score=data.get("english_score"),
+    )
 
     if span:
         try:

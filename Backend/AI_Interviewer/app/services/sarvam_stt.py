@@ -1,0 +1,256 @@
+import asyncio
+import base64
+import logging
+from typing import Optional
+from livekit import rtc
+from livekit.agents import (
+    DEFAULT_API_CONNECT_OPTIONS,
+    APIConnectOptions,
+    APIConnectionError,
+    stt,
+)
+from livekit.agents.types import NOT_GIVEN, NotGivenOr
+from livekit.agents.utils import AudioBuffer, is_given
+from sarvamai import (
+    AsyncSarvamAI,
+    RealtimeAudioInput,
+    RealtimeEnd,
+    RealtimeFlush,
+)
+
+logger = logging.getLogger("sarvam_stt")
+
+
+class SarvamRealtimeSpeechStream(stt.SpeechStream):
+    """
+    Real-time bidirectional WebSocket speech stream powered by Sarvam saaras:v3-realtime.
+    Streams linear16 raw PCM audio directly over WebSockets and emits LiveKit SpeechEvents.
+    """
+
+    def __init__(
+        self,
+        *,
+        stt_instance: "SarvamRealtimeSTT",
+        api_key: str,
+        language: str = "en-IN",
+        model: str = "saaras:v3-realtime",
+        mode: str = "transcribe",
+        stream_type: str = "balanced",
+        sample_rate: int = 16000,
+        conn_options: APIConnectOptions = DEFAULT_API_CONNECT_OPTIONS,
+    ):
+        super().__init__(stt=stt_instance, conn_options=conn_options, sample_rate=sample_rate)
+        self._api_key = api_key
+        self._language = language
+        self._model = model
+        self._mode = mode
+        self._stream_type = stream_type
+        self._sample_rate = sample_rate
+        self._client = AsyncSarvamAI(api_subscription_key=self._api_key)
+
+    async def _run(self) -> None:
+        logger.info(
+            f"Connecting to Sarvam Realtime STT WebSocket (model={self._model}, lang={self._language}, mode={self._mode})"
+        )
+        while not self._input_ch.closed:
+            try:
+                async with self._client.speech_to_text_realtime_streaming.connect(
+                    language_code=self._language,
+                    model=self._model,
+                    mode=self._mode,
+                    stream_type=self._stream_type,
+                    encoding="linear16",
+                    sample_rate=str(self._sample_rate),
+                ) as ws:
+                    logger.info("Connected to Sarvam Realtime STT WebSocket successfully.")
+
+                    async def send_audio():
+                        # 100ms buffer at 16kHz mono 16-bit = 3200 bytes
+                        chunk_size = int(self._sample_rate * 0.1 * 2)
+                        buf = bytearray()
+
+                        try:
+                            async for frame in self._input_ch:
+                                if isinstance(frame, rtc.AudioFrame):
+                                    buf.extend(frame.data.tobytes())
+                                    while len(buf) >= chunk_size:
+                                        chunk = bytes(buf[:chunk_size])
+                                        del buf[:chunk_size]
+                                        b64_audio = base64.b64encode(chunk).decode("utf-8")
+                                        await ws.send_realtime_audio_input(
+                                            RealtimeAudioInput(audio=b64_audio)
+                                        )
+                                flush_sentinel_cls = getattr(stt, "RecognizeStream", getattr(stt, "SpeechStream", None))
+                                _FlushSentinel = getattr(flush_sentinel_cls, "_FlushSentinel", None)
+                                if _FlushSentinel and isinstance(frame, _FlushSentinel):
+                                    # Flush pending buffer bytes to WebSocket without calling RealtimeFlush
+                                    if buf:
+                                        b64_audio = base64.b64encode(bytes(buf)).decode("utf-8")
+                                        buf.clear()
+                                        await ws.send_realtime_audio_input(
+                                            RealtimeAudioInput(audio=b64_audio)
+                                        )
+                        except asyncio.CancelledError:
+                            pass
+                        finally:
+                            try:
+                                if buf:
+                                    b64_audio = base64.b64encode(bytes(buf)).decode("utf-8")
+                                    buf.clear()
+                                    await ws.send_realtime_audio_input(
+                                        RealtimeAudioInput(audio=b64_audio)
+                                    )
+                                await ws.send_realtime_end(RealtimeEnd())
+                            except Exception:
+                                pass
+
+                    async def receive_events():
+                        try:
+                            async for message in ws:
+                                event = getattr(message, "event", None) or getattr(message, "type", None)
+                                text = getattr(message, "text", None) or getattr(message, "transcript", "")
+                                if isinstance(text, str):
+                                    text = text.strip()
+
+                                if event in ("transcript.partial", "transcript"):
+                                    if text:
+                                        self._event_ch.send_nowait(
+                                            stt.SpeechEvent(
+                                                type=stt.SpeechEventType.INTERIM_TRANSCRIPT,
+                                                alternatives=[
+                                                    stt.SpeechData(language=self._language, text=text)
+                                                ]
+                                            )
+                                        )
+                                elif event == "transcript.final":
+                                    if text:
+                                        logger.info(f"Sarvam STT Final Transcript: '{text}'")
+                                        self._event_ch.send_nowait(
+                                            stt.SpeechEvent(
+                                                type=stt.SpeechEventType.FINAL_TRANSCRIPT,
+                                                alternatives=[
+                                                    stt.SpeechData(language=self._language, text=text)
+                                                ]
+                                            )
+                                        )
+                                elif event in ("speech.start", "vad.speech_start"):
+                                    self._event_ch.send_nowait(
+                                        stt.SpeechEvent(type=stt.SpeechEventType.START_OF_SPEECH)
+                                    )
+                                elif event in ("speech.end", "vad.speech_end"):
+                                    self._event_ch.send_nowait(
+                                        stt.SpeechEvent(type=stt.SpeechEventType.END_OF_SPEECH)
+                                    )
+                                elif event == "error":
+                                    err_msg = getattr(message, "message", None) or getattr(message, "error", str(message))
+                                    logger.error(f"Sarvam Realtime STT Error event: {err_msg}")
+                                    break
+                        except asyncio.CancelledError:
+                            pass
+                        except Exception as e:
+                            logger.error(f"Error receiving Sarvam STT events: {e}")
+                            raise
+
+                    send_task = asyncio.create_task(send_audio())
+                    recv_task = asyncio.create_task(receive_events())
+                    
+                    done, pending = await asyncio.wait(
+                        [send_task, recv_task],
+                        return_when=asyncio.FIRST_COMPLETED
+                    )
+                    if send_task in done and not recv_task.done():
+                        # Give receiver a short grace period to capture final transcription packet
+                        try:
+                            await asyncio.wait_for(recv_task, timeout=1.2)
+                        except (asyncio.TimeoutError, asyncio.CancelledError):
+                            pass
+                    for t in pending:
+                        if not t.done():
+                            t.cancel()
+                    if self._input_ch.closed:
+                        break
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Sarvam Realtime STT WebSocket loop error: {e}")
+                if self._input_ch.closed:
+                    raise APIConnectionError(f"Sarvam STT WebSocket failed: {e}") from e
+                await asyncio.sleep(0.5)
+
+
+class SarvamRealtimeSTT(stt.STT):
+    """
+    LiveKit STT provider using Sarvam AI Saaras v3 realtime streaming over WebSockets.
+    """
+
+    def __init__(
+        self,
+        *,
+        api_key: Optional[str] = None,
+        language: str = "en-IN",
+        model: str = "saaras:v3-realtime",
+        mode: str = "transcribe",
+        stream_type: str = "balanced",
+        sample_rate: int = 16000,
+    ):
+        super().__init__(
+            capabilities=stt.STTCapabilities(
+                streaming=True,
+                interim_results=True,
+            )
+        )
+        self._api_key = (api_key or "").strip()
+        self._language = language
+        self._model = model
+        self._mode = mode
+        self._stream_type = stream_type
+        self._sample_rate = sample_rate
+
+    @property
+    def model(self) -> str:
+        return self._model
+
+    @property
+    def provider(self) -> str:
+        return "Sarvam AI (Saaras v3 Realtime)"
+
+    def stream(
+        self,
+        *,
+        language: NotGivenOr[str] = NOT_GIVEN,
+        conn_options: APIConnectOptions = DEFAULT_API_CONNECT_OPTIONS,
+    ) -> stt.SpeechStream:
+        resolved_lang = language if is_given(language) else self._language
+        return SarvamRealtimeSpeechStream(
+            stt_instance=self,
+            api_key=self._api_key,
+            language=resolved_lang,
+            model=self._model,
+            mode=self._mode,
+            stream_type=self._stream_type,
+            sample_rate=self._sample_rate,
+            conn_options=conn_options,
+        )
+
+    async def _recognize_impl(
+        self,
+        buffer: AudioBuffer,
+        *,
+        language: NotGivenOr[str] = NOT_GIVEN,
+        conn_options: APIConnectOptions,
+    ) -> stt.SpeechEvent:
+        resolved_lang = language if is_given(language) else self._language
+        wav_bytes = rtc.combine_audio_frames(buffer).to_wav_bytes()
+        client = AsyncSarvamAI(api_subscription_key=self._api_key)
+        resp = await client.speech_to_text.transcribe(
+            file=wav_bytes,
+            model="saaras:v3",
+            language_code=resolved_lang,
+            mode=self._mode,
+        )
+        transcript = getattr(resp, "transcript", "") or ""
+        return stt.SpeechEvent(
+            type=stt.SpeechEventType.FINAL_TRANSCRIPT,
+            alternatives=[stt.SpeechData(language=resolved_lang, text=transcript)],
+        )

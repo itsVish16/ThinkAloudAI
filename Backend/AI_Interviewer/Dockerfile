@@ -26,6 +26,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --no-dev --no-install-project
 
 COPY app/ ./app/
+COPY test_*.py ./
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --no-dev

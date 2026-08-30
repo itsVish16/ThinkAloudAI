@@ -15,6 +15,7 @@ import { Line } from 'react-chartjs-2';
 import { getMyInterviews } from '../services/interviewService';
 import { getLiveLeaderboard } from '../services/leaderboardService';
 import type { LeaderboardUser } from '../services/leaderboardService';
+import { computeUnifiedInterviewScore } from '../utils/interviewScore';
 import './DashboardOverview.css';
 
 ChartJS.register(
@@ -61,10 +62,14 @@ export function DashboardOverview({ user, langgraphProfile, onNavigate, onSelect
   const [recentInterviews, setRecentInterviews] = useState<any[]>([]);
   const [roadmaps, setRoadmaps] = useState<any[]>([]);
   
-  // Category Percentages
+  // Category Percentages & Multi-Track Scores
   const [dsaPct, setDsaPct] = useState(0);
   const [sdPct, setSdPct] = useState(0);
   const [behPct, setBehPct] = useState(0);
+  const [dsaScores, setDsaScores] = useState<number[]>([]);
+  const [sdScores, setSdScores] = useState<number[]>([]);
+  const [behScores, setBehScores] = useState<number[]>([]);
+  const [chartTrackFilter, setChartTrackFilter] = useState<'all' | 'dsa' | 'sd' | 'behavioral'>('all');
   
   const [lbData, setLbData] = useState<LeaderboardUser[]>([]);
   const [myRank, setMyRank] = useState<number | null>(null);
@@ -78,14 +83,7 @@ export function DashboardOverview({ user, langgraphProfile, onNavigate, onSelect
         const validInterviews = data.filter((d: any) => d.stage === 'completed' && d.feedback);
         if (validInterviews.length > 0) {
           const pastScores = validInterviews.map((d: any) => {
-            const fb = d.feedback;
-            let total = (fb.technical_score || 0) + (fb.communication_score || 0);
-            let divisor = 2;
-            if (fb.english_score) {
-              total += fb.english_score;
-              divisor = 3;
-            }
-            return Math.round(total / divisor);
+            return computeUnifiedInterviewScore(d, d.interview_type) || 0;
           })
           .filter((s: number) => s > 0) // Filter out zero-score entries (incomplete feedback)
           .reverse()
@@ -93,7 +91,33 @@ export function DashboardOverview({ user, langgraphProfile, onNavigate, onSelect
           setScores(pastScores);
           
           const sum = pastScores.reduce((a, b) => a + b, 0);
-          setAverageScore(Math.round(sum / pastScores.length));
+          setAverageScore(pastScores.length > 0 ? Math.round(sum / pastScores.length) : 0);
+
+          // Track-specific score arrays for 3 distinct curves
+          const dsaList = validInterviews
+            .filter((d: any) => ['dsa', 'swe', 'coding'].some(t => (d.interview_type || '').toLowerCase().includes(t)))
+            .map((d: any) => computeUnifiedInterviewScore(d, d.interview_type) || 0)
+            .filter((s: number) => s > 0)
+            .reverse()
+            .slice(-10);
+
+          const sdList = validInterviews
+            .filter((d: any) => ['system', 'sd', 'system_design'].some(t => (d.interview_type || '').toLowerCase().includes(t)))
+            .map((d: any) => computeUnifiedInterviewScore(d, d.interview_type) || 0)
+            .filter((s: number) => s > 0)
+            .reverse()
+            .slice(-10);
+
+          const behList = validInterviews
+            .filter((d: any) => ['behavioral', 'hr', 'pm', 'product', 'general', 'discussion', 'aiml', 'ai'].some(t => (d.interview_type || '').toLowerCase().includes(t)))
+            .map((d: any) => computeUnifiedInterviewScore(d, d.interview_type) || 0)
+            .filter((s: number) => s > 0)
+            .reverse()
+            .slice(-10);
+
+          setDsaScores(dsaList);
+          setSdScores(sdList);
+          setBehScores(behList);
           
           // Calculate Category Percentages
           const calcCategoryAvg = (typeMatches: string[]) => {
@@ -101,14 +125,7 @@ export function DashboardOverview({ user, langgraphProfile, onNavigate, onSelect
             
             // Calculate valid scores for each matched interview
             const validScores = matches.map((d: any) => {
-              const fb = d.feedback;
-              let total = (fb.technical_score || 0) + (fb.communication_score || 0);
-              let div = 2;
-              if (fb.english_score) {
-                total += fb.english_score;
-                div = 3;
-              }
-              return Math.round(total / div) || 0;
+              return computeUnifiedInterviewScore(d, d.interview_type) || 0;
             }).filter((s: number) => s > 0); // Only include non-zero scores!
             
             if (validScores.length === 0) return 0;
@@ -241,39 +258,137 @@ export function DashboardOverview({ user, langgraphProfile, onNavigate, onSelect
     });
   }, [interviewsTaken, averageScore, problemsSolved, dayStreak]);
 
-  // Score progress chart setup — dynamic min so the line never crashes to 0
-  const scoreMin = scores.length > 0 ? Math.max(0, Math.min(...scores) - 20) : 0;
-  const scoreMax = scores.length > 0 ? Math.min(100, Math.max(...scores) + 10) : 100;
+  // Multi-Track Score Progress Chart Setup
+  const maxSessions = Math.max(dsaScores.length, sdScores.length, behScores.length, scores.length, 1);
+  const chartLabels = Array.from({ length: maxSessions }, (_, i) => `Session ${i + 1}`);
 
-  const chartData = {
-    labels: scores.map((_, i) => `Session ${i + 1}`),
-    datasets: [
-      {
-        fill: true,
-        label: 'Score',
-        data: scores,
-        borderColor: '#FF7A00',
+  const allScoresCombined = [
+    ...(chartTrackFilter === 'all' || chartTrackFilter === 'dsa' ? dsaScores : []),
+    ...(chartTrackFilter === 'all' || chartTrackFilter === 'sd' ? sdScores : []),
+    ...(chartTrackFilter === 'all' || chartTrackFilter === 'behavioral' ? behScores : []),
+    ...(dsaScores.length === 0 && sdScores.length === 0 && behScores.length === 0 ? scores : [])
+  ].filter(s => s > 0);
+
+  const scoreMin = allScoresCombined.length > 0 ? Math.max(0, Math.min(...allScoresCombined) - 15) : 0;
+  const scoreMax = allScoresCombined.length > 0 ? Math.min(100, Math.max(...allScoresCombined) + 10) : 100;
+
+  // Build the 3 distinct datasets
+  const activeDatasets: any[] = [];
+
+  if (chartTrackFilter === 'all' || chartTrackFilter === 'dsa') {
+    if (dsaScores.length > 0 || chartTrackFilter === 'dsa') {
+      activeDatasets.push({
+        label: 'DSA & Coding',
+        data: dsaScores,
+        borderColor: '#f97316',
         backgroundColor: (ctx: any) => {
           const chart = ctx.chart;
           const { ctx: canvasCtx, chartArea } = chart;
-          if (!chartArea) return 'rgba(255, 122, 0, 0.1)';
+          if (!chartArea) return 'rgba(249, 115, 22, 0.1)';
           const gradient = canvasCtx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-          gradient.addColorStop(0, 'rgba(255, 122, 0, 0.35)');
-          gradient.addColorStop(1, 'rgba(255, 122, 0, 0.02)');
+          gradient.addColorStop(0, 'rgba(249, 115, 22, 0.28)');
+          gradient.addColorStop(1, 'rgba(249, 115, 22, 0.01)');
           return gradient;
         },
-        tension: 0.45,
+        fill: chartTrackFilter === 'dsa',
+        tension: 0.42,
         pointBackgroundColor: '#0a0a0c',
-        pointBorderColor: '#FF7A00',
+        pointBorderColor: '#f97316',
         pointBorderWidth: 2.5,
         pointRadius: 5,
-        pointHoverRadius: 8,
-        pointHoverBackgroundColor: '#FF7A00',
+        pointHoverRadius: 7,
+        pointHoverBackgroundColor: '#f97316',
         pointHoverBorderColor: '#ffffff',
-        pointHoverBorderWidth: 3,
+        pointHoverBorderWidth: 2.5,
         borderWidth: 2.5,
-      },
-    ],
+        spanGaps: true,
+      });
+    }
+  }
+
+  if (chartTrackFilter === 'all' || chartTrackFilter === 'sd') {
+    if (sdScores.length > 0 || chartTrackFilter === 'sd') {
+      activeDatasets.push({
+        label: 'System Design',
+        data: sdScores,
+        borderColor: '#38bdf8',
+        backgroundColor: (ctx: any) => {
+          const chart = ctx.chart;
+          const { ctx: canvasCtx, chartArea } = chart;
+          if (!chartArea) return 'rgba(56, 189, 248, 0.1)';
+          const gradient = canvasCtx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+          gradient.addColorStop(0, 'rgba(56, 189, 248, 0.28)');
+          gradient.addColorStop(1, 'rgba(56, 189, 248, 0.01)');
+          return gradient;
+        },
+        fill: chartTrackFilter === 'sd',
+        tension: 0.42,
+        pointBackgroundColor: '#0a0a0c',
+        pointBorderColor: '#38bdf8',
+        pointBorderWidth: 2.5,
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        pointHoverBackgroundColor: '#38bdf8',
+        pointHoverBorderColor: '#ffffff',
+        pointHoverBorderWidth: 2.5,
+        borderWidth: 2.5,
+        spanGaps: true,
+      });
+    }
+  }
+
+  if (chartTrackFilter === 'all' || chartTrackFilter === 'behavioral') {
+    if (behScores.length > 0 || chartTrackFilter === 'behavioral') {
+      activeDatasets.push({
+        label: 'Behavioral & STAR',
+        data: behScores,
+        borderColor: '#10b981',
+        backgroundColor: (ctx: any) => {
+          const chart = ctx.chart;
+          const { ctx: canvasCtx, chartArea } = chart;
+          if (!chartArea) return 'rgba(16, 185, 129, 0.1)';
+          const gradient = canvasCtx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+          gradient.addColorStop(0, 'rgba(16, 185, 129, 0.28)');
+          gradient.addColorStop(1, 'rgba(16, 185, 129, 0.01)');
+          return gradient;
+        },
+        fill: chartTrackFilter === 'behavioral',
+        tension: 0.42,
+        pointBackgroundColor: '#0a0a0c',
+        pointBorderColor: '#10b981',
+        pointBorderWidth: 2.5,
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        pointHoverBackgroundColor: '#10b981',
+        pointHoverBorderColor: '#ffffff',
+        pointHoverBorderWidth: 2.5,
+        borderWidth: 2.5,
+        spanGaps: true,
+      });
+    }
+  }
+
+  // Fallback if none matched but overall scores exist
+  if (activeDatasets.length === 0 && scores.length > 0) {
+    activeDatasets.push({
+      label: 'All Sessions',
+      data: scores,
+      borderColor: '#FF7A00',
+      backgroundColor: 'rgba(255, 122, 0, 0.1)',
+      fill: true,
+      tension: 0.45,
+      pointBackgroundColor: '#0a0a0c',
+      pointBorderColor: '#FF7A00',
+      pointBorderWidth: 2.5,
+      pointRadius: 5,
+      pointHoverRadius: 7,
+      borderWidth: 2.5,
+    });
+  }
+
+  const chartData = {
+    labels: chartLabels,
+    datasets: activeDatasets,
   };
 
   const chartOptions = {
@@ -282,29 +397,32 @@ export function DashboardOverview({ user, langgraphProfile, onNavigate, onSelect
     plugins: {
       legend: { display: false },
       tooltip: {
-        backgroundColor: 'rgba(12, 12, 14, 0.95)',
-        titleColor: '#FF7A00',
+        backgroundColor: 'rgba(12, 12, 18, 0.95)',
+        titleColor: '#ffffff',
         bodyColor: '#f6f6f3',
-        borderColor: 'rgba(255, 122, 0, 0.3)',
+        borderColor: 'rgba(255, 255, 255, 0.12)',
         borderWidth: 1,
         padding: 12,
         cornerRadius: 10,
-        displayColors: false,
+        displayColors: true,
+        boxWidth: 8,
+        boxHeight: 8,
+        usePointStyle: true,
         titleFont: { family: 'Space Grotesk', weight: 'bold' as const, size: 13 },
-        bodyFont: { family: 'Inter', size: 13 },
+        bodyFont: { family: 'Inter', size: 12 },
         callbacks: {
           title: function(items: any) {
             return items[0]?.label || '';
           },
           label: function(context: any) {
-            return `Score: ${context.parsed.y}/100`;
+            return ` ${context.dataset.label}: ${context.parsed.y}/100`;
           }
         }
       }
     },
     scales: {
       x: { 
-        display: true,
+        display: true, 
         grid: { display: false },
         ticks: { 
           color: 'rgba(141,141,146,0.5)', 
@@ -447,17 +565,73 @@ export function DashboardOverview({ user, langgraphProfile, onNavigate, onSelect
 
           <section className="overview-card overview-rise" style={{ animationDelay: '.1s' }}>
             <div className="overview-card-head">
-              <h2><i className="ti ti-chart-line"></i>Score progress</h2>
-              <span className="overview-meta">Last {scores.length || '—'} sessions</span>
-            </div>
-            {scores.length > 0 ? (
-              <div className="overview-chart-wrap">
-                <Line data={chartData} options={chartOptions} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <h2><i className="ti ti-chart-line"></i>Score progress</h2>
+                <span className="overview-meta">Track Trends</span>
               </div>
+
+              {/* Multi-Track Interactive Filters */}
+              <div className="overview-chart-track-pills">
+                <button 
+                  className={`overview-track-pill ${chartTrackFilter === 'all' ? 'active all' : ''}`}
+                  onClick={() => setChartTrackFilter('all')}
+                  title="View all 3 tracks simultaneously"
+                >
+                  All (3 Lines)
+                </button>
+                <button 
+                  className={`overview-track-pill ${chartTrackFilter === 'dsa' ? 'active dsa' : ''}`}
+                  onClick={() => setChartTrackFilter('dsa')}
+                  title="Filter to DSA & Coding track"
+                >
+                  <span className="track-pill-dot dsa" />
+                  DSA {dsaScores.length > 0 ? `(${dsaScores.length})` : ''}
+                </button>
+                <button 
+                  className={`overview-track-pill ${chartTrackFilter === 'sd' ? 'active sd' : ''}`}
+                  onClick={() => setChartTrackFilter('sd')}
+                  title="Filter to System Design track"
+                >
+                  <span className="track-pill-dot sd" />
+                  Sys Design {sdScores.length > 0 ? `(${sdScores.length})` : ''}
+                </button>
+                <button 
+                  className={`overview-track-pill ${chartTrackFilter === 'behavioral' ? 'active beh' : ''}`}
+                  onClick={() => setChartTrackFilter('behavioral')}
+                  title="Filter to Behavioral & Leadership track"
+                >
+                  <span className="track-pill-dot beh" />
+                  Behavioral {behScores.length > 0 ? `(${behScores.length})` : ''}
+                </button>
+              </div>
+            </div>
+
+            {scores.length > 0 || dsaScores.length > 0 || sdScores.length > 0 || behScores.length > 0 ? (
+              <>
+                <div className="overview-chart-wrap">
+                  <Line data={chartData} options={chartOptions} />
+                </div>
+                
+                {/* 3-Track Live Legend Bar */}
+                <div className="overview-chart-legend-bar">
+                  <div className="overview-legend-item">
+                    <span className="track-pill-dot dsa" />
+                    <span>DSA &amp; Coding: <strong style={{ color: '#fff' }}>{dsaScores.length > 0 ? `${dsaScores[dsaScores.length - 1]}/100` : '—'}</strong></span>
+                  </div>
+                  <div className="overview-legend-item">
+                    <span className="track-pill-dot sd" />
+                    <span>System Design: <strong style={{ color: '#fff' }}>{sdScores.length > 0 ? `${sdScores[sdScores.length - 1]}/100` : '—'}</strong></span>
+                  </div>
+                  <div className="overview-legend-item">
+                    <span className="track-pill-dot beh" />
+                    <span>Behavioral: <strong style={{ color: '#fff' }}>{behScores.length > 0 ? `${behScores[behScores.length - 1]}/100` : '—'}</strong></span>
+                  </div>
+                </div>
+              </>
             ) : (
               <div className="overview-empty-inline">
                 <i className="ti ti-chart-line"></i>
-                <p>Complete your first interview to see score trends here.</p>
+                <p>Complete your first interview to see score trends across DSA, System Design, and Behavioral tracks.</p>
                 <button className="overview-empty-cta" onClick={() => handleNav('interview')}>Start an interview</button>
               </div>
             )}

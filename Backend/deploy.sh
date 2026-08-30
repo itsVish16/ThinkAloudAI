@@ -37,11 +37,10 @@ log_info "Using compose configuration: $COMPOSE_FILE"
 log_info "Building container images..."
 docker compose -f "$COMPOSE_FILE" build --parallel
 
-log_info "Starting Database and Core Infrastructure (PostgreSQL, Redis, RabbitMQ, Datadog)..."
-docker compose -f "$COMPOSE_FILE" up -d postgres redis rabbitmq datadog-agent
+log_info "Starting Core Infrastructure (Redis, RabbitMQ, Datadog)..."
+docker compose -f "$COMPOSE_FILE" up -d redis rabbitmq datadog-agent
 
-log_info "Waiting for PostgreSQL, Redis, and RabbitMQ to pass health checks..."
-timeout 60 bash -c 'until docker compose -f '"$COMPOSE_FILE"' ps postgres | grep -q "(healthy)"; do sleep 2; done' || log_warn "Postgres healthcheck timeout"
+log_info "Waiting for Redis and RabbitMQ to pass health checks..."
 timeout 60 bash -c 'until docker compose -f '"$COMPOSE_FILE"' ps redis | grep -q "(healthy)"; do sleep 2; done' || log_warn "Redis healthcheck timeout"
 timeout 60 bash -c 'until docker compose -f '"$COMPOSE_FILE"' ps rabbitmq | grep -q "(healthy)"; do sleep 2; done' || log_warn "RabbitMQ healthcheck timeout"
 
@@ -54,7 +53,7 @@ docker compose -f "$COMPOSE_FILE" ps
 
 log_success "================================================================"
 log_success " ThinkAloudAI Backend successfully deployed!"
-log_success " Database: PostgreSQL 16 (Port 5432, 3 isolated databases)"
+log_success " Database: Azure PostgreSQL Flexible Server"
 log_success " Cache: Redis 7 (Port 6379, DB 0, 1, 2)"
 log_success " Message Broker: RabbitMQ (Port 5672, Mgmt 15672)"
 log_success " Microservices: User Service (:8000), Main Service (:8001), AI Interviewer (:8002)"

@@ -25,6 +25,8 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 async def require_admin(payload: dict = Depends(verify_jwt), db: AsyncSession = Depends(get_db)) -> dict:
     email = payload.get("email")
+    role = (payload.get("role") or "").strip().lower()
+    is_admin = payload.get("is_admin") is True or role == "admin"
     
     if not email and payload.get("raw_token"):
         try:
@@ -36,16 +38,26 @@ async def require_admin(payload: dict = Depends(verify_jwt), db: AsyncSession = 
                 timeout=5.0
             )
             if resp.status_code == 200:
-                email = resp.json().get("email", email)
+                userData = resp.json()
+                email = userData.get("email", email)
+                if userData.get("is_admin") is True or (userData.get("role") or "").lower() == "admin":
+                    is_admin = True
         except Exception:
             pass
 
     admin_emails = os.getenv("ADMIN_EMAILS", settings.ADMIN_EMAILS)
     allowed = [e.strip().lower() for e in admin_emails.split(",") if e.strip()]
-    if not allowed or not email or email.lower() not in allowed:
-        raise HTTPException(status_code=403, detail="Not authorized. Admin access required.")
+    
+    email_lower = (email or "").strip().lower()
+    if allowed and email_lower in allowed:
+        return payload
+    if is_admin:
+        return payload
+    if not allowed:
+        # Development default: allow authenticated users
+        return payload
         
-    return payload
+    raise HTTPException(status_code=403, detail="Not authorized. Admin access required.")
 
 
 # ---------------------------------------------------------------------------
@@ -123,7 +135,7 @@ async def get_roadmap_stats(
     total_roadmaps = await db.scalar(select(func.count(Roadmap.id)))
     
     # 30-day trends
-    thirty_days_ago = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=30)
+    thirty_days_ago = datetime.now(UTC) - timedelta(days=30)
     trend_stmt = (
         select(
             func.date(Roadmap.created_at).label("date"),

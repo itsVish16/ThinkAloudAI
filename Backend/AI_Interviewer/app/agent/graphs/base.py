@@ -7,6 +7,7 @@ from app.agent.prompts import (
     STAGE_PROMPTS,
     TTS_RULES,
     INTERVIEW_PERSONA,
+    INTERVIEW_PERSONAS,
     EVALUATOR_RULES,
     EVALUATION_PROMPT,
 )
@@ -26,8 +27,6 @@ INTERVIEW_FLOWS: Dict[str, List[str]] = {
     "system_design": [
         InterviewStage.INTRO_AUDIO_CHECK.value,
         InterviewStage.INTRO_AGENDA.value,
-        InterviewStage.INTRO_BACKGROUND.value,
-        InterviewStage.INTRO_CANDIDATE.value,
         InterviewStage.SYSTEM_DESIGN_REQUIREMENTS.value,
         InterviewStage.SYSTEM_DESIGN_HLD.value,
         InterviewStage.SYSTEM_DESIGN_DEEP_DIVE.value,
@@ -37,9 +36,6 @@ INTERVIEW_FLOWS: Dict[str, List[str]] = {
     ],
     "dsa": [
         InterviewStage.INTRO_AUDIO_CHECK.value,
-        InterviewStage.INTRO_AGENDA.value,
-        InterviewStage.INTRO_BACKGROUND.value,
-        InterviewStage.INTRO_CANDIDATE.value,
         InterviewStage.DSA_PRESENTATION.value,
         InterviewStage.DSA_APPROACH.value,
         InterviewStage.DSA_CODING.value,
@@ -50,9 +46,7 @@ INTERVIEW_FLOWS: Dict[str, List[str]] = {
     ],
     "hr": [
         InterviewStage.INTRO_AUDIO_CHECK.value,
-        InterviewStage.INTRO_AGENDA.value,
         InterviewStage.INTRO_BACKGROUND.value,
-        InterviewStage.INTRO_CANDIDATE.value,
         InterviewStage.BEHAVIORAL_QUESTION.value,
         InterviewStage.BEHAVIORAL_FOLLOWUP.value,
         InterviewStage.CANDIDATE_QA.value,
@@ -61,9 +55,7 @@ INTERVIEW_FLOWS: Dict[str, List[str]] = {
     ],
     "pm": [
         InterviewStage.INTRO_AUDIO_CHECK.value,
-        InterviewStage.INTRO_AGENDA.value,
         InterviewStage.INTRO_BACKGROUND.value,
-        InterviewStage.INTRO_CANDIDATE.value,
         InterviewStage.PM_PROBLEM_FRAMING.value,
         InterviewStage.PM_USER_SEGMENTATION.value,
         InterviewStage.PM_SOLUTION_BRAINSTORMING.value,
@@ -75,8 +67,6 @@ INTERVIEW_FLOWS: Dict[str, List[str]] = {
     "presentation": [
         InterviewStage.INTRO_AUDIO_CHECK.value,
         InterviewStage.INTRO_AGENDA.value,
-        InterviewStage.INTRO_BACKGROUND.value,
-        InterviewStage.INTRO_CANDIDATE.value,
         InterviewStage.PRESENTATION_QA.value,
         InterviewStage.CANDIDATE_QA.value,
         InterviewStage.WRAP_UP.value,
@@ -84,9 +74,7 @@ INTERVIEW_FLOWS: Dict[str, List[str]] = {
     ],
     "ai_ml": [
         InterviewStage.INTRO_AUDIO_CHECK.value,
-        InterviewStage.INTRO_AGENDA.value,
         InterviewStage.INTRO_BACKGROUND.value,
-        InterviewStage.INTRO_CANDIDATE.value,
         InterviewStage.AIML_FUNDAMENTALS.value,
         InterviewStage.AIML_SYSTEM.value,
         InterviewStage.CANDIDATE_QA.value,
@@ -99,18 +87,18 @@ MIN_TURNS_PER_STAGE: Dict[str, int] = {
     "intro_welcome": 1,
     "intro_audio_check": 1,
     "intro_agenda": 1,
-    "intro_background": 2,
-    "resume_probe": 2,
+    "intro_background": 1,
+    "resume_probe": 1,
     "intro_candidate": 1,
     "intro_editor": 1,
     "dsa_presentation": 1,
-    "dsa_approach": 2,
+    "dsa_approach": 1,
     "dsa_coding": 1,
     "dsa_testing": 1,
     "system_design_requirements": 2,
     "system_design_hld": 2,
     "system_design_deep_dive": 2,
-    "behavioral_question": 2,
+    "behavioral_question": 1,
     "behavioral_followup": 1,
     "pm_problem_framing": 2,
     "pm_user_segmentation": 2,
@@ -143,7 +131,7 @@ def normalize_interview_type(interview_type: str) -> str:
 
 async def generate_response(state: InterviewState) -> Dict[str, Any]:
     """
-    The Speaker Node. Purely conversational. Streams a response based on the current stage.
+    The Speaker Node. Purely conversational. Streams a response based on the current stage and track.
     """
     current_stage = state["stage"]
     prompt = STAGE_PROMPTS.get(current_stage, STAGE_PROMPTS["wrap_up"])
@@ -168,46 +156,99 @@ async def generate_response(state: InterviewState) -> Dict[str, Any]:
     norm_type = normalize_interview_type(i_type_raw)
     candidate_name = state.get("candidate_name", "Candidate")
 
-    if norm_type == "system_design":
-        formatted_type = "System Design"
-        stage_agenda_desc = "Designing a scalable distributed architecture on the whiteboard"
-        intro_trans_text = f"Great background, {candidate_name}! Let's jump into our system design challenge on the whiteboard. Take a moment to review the scenario, and let me know if you have any questions."
-    elif norm_type == "dsa":
-        formatted_type = "Data Structures and Algorithms"
-        stage_agenda_desc = "Solving two DSA coding problems in the editor on screen"
-        intro_trans_text = f"Great background, {candidate_name}! Let's jump into the first problem on your screen. Take a minute to read through it, and let me know if you have any clarifying questions."
-    elif norm_type == "pm":
-        formatted_type = "Product Management"
-        stage_agenda_desc = "Product sense, user problem scoping, solution prioritization, and success metrics"
-        intro_trans_text = f"Great background, {candidate_name}! Let's dive right into our product management scenario today. I'm excited to hear how you frame the target opportunity."
-    elif norm_type == "hr":
-        formatted_type = "Behavioral"
-        stage_agenda_desc = "Behavioral scenarios, leadership examples, and past engineering impact"
-        intro_trans_text = f"Great background, {candidate_name}! Let's begin with our first behavioral scenario. I'm interested in hearing about your past engineering experiences and leadership."
-    elif norm_type == "ai_ml":
-        formatted_type = "AI and Machine Learning"
-        stage_agenda_desc = "AI/ML modeling fundamentals, loss formulation, and production inference architecture"
-        intro_trans_text = f"Great background, {candidate_name}! Let's dive into our AI and machine learning challenge today. Let's start with objective framing and architecture."
-    else:
-        formatted_type = i_type_raw.replace("_", " ").title()
-        stage_agenda_desc = "Technical assessment, engineering deep dives, and problem solving"
-        intro_trans_text = f"Great background, {candidate_name}! Let's dive into our technical discussion today."
-
-    # Format active question nicely
+    # Format active question nicely by track
     if isinstance(active_q, dict):
         q_title = active_q.get("title", "")
         q_desc = active_q.get("description", "")
         q_diff = active_q.get("difficulty", "")
-        formatted_q = f"ACTIVE PROBLEM TITLE: {q_title}"
-        if q_diff:
-            formatted_q += f" (Difficulty: {q_diff})"
-        if q_desc:
-            formatted_q += f"\nDescription:\n{q_desc}"
-        formatted_q += f"\n\nCRITICAL INSTRUCTION: The candidate is looking at the problem '{q_title}' on their screen. You MUST discuss and refer to '{q_title}'. NEVER introduce, describe, or make up any other problem."
+        q_cat = active_q.get("category", "")
+        
+        if norm_type == "hr":
+            formatted_q = f"SCENARIO TITLE: {q_title}"
+            if q_cat:
+                formatted_q += f" (Competency: {q_cat})"
+            if q_desc:
+                formatted_q += f"\nPrompt:\n{q_desc}"
+        else:
+            formatted_q = f"ACTIVE PROBLEM TITLE: {q_title}"
+            if q_diff:
+                formatted_q += f" (Difficulty: {q_diff})"
+            if q_desc:
+                formatted_q += f"\nDescription:\n{q_desc}"
+            formatted_q += f"\n\nCRITICAL INSTRUCTION: The candidate is viewing '{q_title}'. You MUST discuss and refer to '{q_title}'."
     elif active_q:
         formatted_q = str(active_q)
     else:
-        formatted_q = "General Technical Discussion"
+        formatted_q = "General Technical Discussion" if norm_type != "hr" else "Past Engineering Impact & Teamwork"
+
+    # Track-specific intros and transitions
+    if norm_type == "system_design":
+        formatted_type = "System Design"
+        stage_agenda_desc = "Designing a scalable distributed architecture on the whiteboard"
+        track_intro_text = f"Awesome, loud and clear! Today's session is focused on System Design on our whiteboard: {formatted_q}. Take a minute to review the scenario, and let me know if you have any questions or when you're ready to dive into requirements."
+        intro_trans_text = f"Great background, {candidate_name}! Let's jump into our system design challenge on the whiteboard. Take a moment to review the scenario, and let me know when you're ready."
+        qa_trans_text = "That covers all my technical questions for today! We have some time left—what questions do you have for me about our engineering practices, architecture, or team culture?"
+        wrap_up_instructions = f"""Format:
+1. Mention 1-2 things they did well (e.g. clear component partitioning, thoughtful scaling and caching strategy).
+2. Mention 1 actionable area to improve (e.g. going deeper into database replication and failover mechanics).
+3. Thank them warmly and conclude: "Thanks for practicing with ThinkAloudAI today, {candidate_name}! Your full score breakdown and feedback are available on your analysis report. Best of luck with your upcoming interviews!"
+"""
+    elif norm_type == "dsa":
+        formatted_type = "Data Structures and Algorithms"
+        stage_agenda_desc = "Solving DSA coding problems in the editor on screen"
+        track_intro_text = f"Awesome, loud and clear! The problem is ready on your screen: {formatted_q}. Take a minute to review the description and constraints, and feel free to ask any clarifying questions or walk me through your initial thoughts and approach."
+        intro_trans_text = f"Great background, {candidate_name}! Let's jump into the first problem on your screen. Take a minute to read through it, and let me know if you have any clarifying questions."
+        qa_trans_text = "That covers all my technical questions for today! We have some time left—what questions do you have for me about our engineering practices, architecture, or team culture?"
+        wrap_up_instructions = f"""Format:
+1. Mention 1-2 things they did well (e.g. structured problem breakdown, clear Big-O articulation, optimal algorithmic approach).
+2. Mention 1 actionable area to improve (e.g. proactively checking boundary edge cases before running).
+3. Thank them warmly and conclude: "Thanks for practicing with ThinkAloudAI today, {candidate_name}! Your full score breakdown and feedback are available on your analysis report. Best of luck with your upcoming interviews!"
+"""
+    elif norm_type == "hr":
+        formatted_type = "Behavioral and Leadership"
+        stage_agenda_desc = "Behavioral scenarios, leadership examples, teamwork, and past engineering impact"
+        track_intro_text = f"Awesome, loud and clear! Today's session is focused on your behavioral, leadership, and engineering collaboration journey. To get us started, could you give me a brief overview of your background, your primary tech stack, and what you've been working on recently?"
+        intro_trans_text = f"Great background, {candidate_name}! Let's dive into our behavioral scenarios. To start, {formatted_q}"
+        qa_trans_text = "That covers all my behavioral questions for today! We have some time left—what questions do you have for me about our engineering culture, team collaboration, or company values?"
+        wrap_up_instructions = f"""Format:
+1. Mention 1-2 things they communicated well (e.g. structured STAR storytelling, authentic ownership, clear team collaboration).
+2. Mention 1 actionable area to improve (e.g. quantifying measurable business outcomes, highlighting specific individual actions).
+3. Thank them warmly and conclude: "Thanks for practicing with ThinkAloudAI today, {candidate_name}! Your full score breakdown and feedback are available on your analysis report. Best of luck with your upcoming interviews!"
+CRITICAL INSTRUCTION: Do NOT mention algorithms, code, test cases, or time/space complexity.
+"""
+    elif norm_type == "pm":
+        formatted_type = "Product Management"
+        stage_agenda_desc = "Product sense, user problem scoping, solution prioritization, and success metrics"
+        track_intro_text = f"Awesome, loud and clear! Today's session is focused on Product Management. To get us started, could you give me a brief overview of your background and what you've been building recently?"
+        intro_trans_text = f"Great background, {candidate_name}! Let's dive right into our product management scenario today: {formatted_q}"
+        qa_trans_text = "That covers all my product questions for today! We have some time left—what questions do you have for me about our product roadmap, team collaboration, or culture?"
+        wrap_up_instructions = f"""Format:
+1. Mention 1-2 things they did well (e.g. strong user empathy, clear framework prioritization).
+2. Mention 1 actionable area to improve (e.g. defining more rigorous guardrail metrics).
+3. Thank them warmly and conclude: "Thanks for practicing with ThinkAloudAI today, {candidate_name}! Your full score breakdown and feedback are available on your analysis report. Best of luck with your upcoming interviews!"
+"""
+    elif norm_type == "ai_ml":
+        formatted_type = "AI and Machine Learning"
+        stage_agenda_desc = "AI/ML modeling fundamentals, loss formulation, and production inference architecture"
+        track_intro_text = f"Awesome, loud and clear! Today's session is focused on AI and Machine Learning Engineering. To get us started, could you give me a brief overview of your background and recent ML projects?"
+        intro_trans_text = f"Great background, {candidate_name}! Let's dive into our AI/ML scenario: {formatted_q}"
+        qa_trans_text = "That covers all my technical questions for today! We have some time left—what questions do you have for me about our AI infrastructure, models, or team culture?"
+        wrap_up_instructions = f"""Format:
+1. Mention 1-2 things they did well (e.g. sound loss function formulation, clear latency optimization).
+2. Mention 1 actionable area to improve (e.g. addressing data drift and fallback strategies).
+3. Thank them warmly and conclude: "Thanks for practicing with ThinkAloudAI today, {candidate_name}! Your full score breakdown and feedback are available on your analysis report. Best of luck with your upcoming interviews!"
+"""
+    else:
+        formatted_type = i_type_raw.replace("_", " ").title()
+        stage_agenda_desc = "Technical assessment, engineering deep dives, and problem solving"
+        track_intro_text = f"Awesome, loud and clear! Today's session is scheduled for about {max_duration} minutes. To get us started, could you give me a brief overview of your background?"
+        intro_trans_text = f"Great background, {candidate_name}! Let's dive into our technical discussion today."
+        qa_trans_text = "That covers all my questions for today! We have some time left—what questions do you have for me about our engineering practices or culture?"
+        wrap_up_instructions = f"""Format:
+1. Mention 1-2 things they did well.
+2. Mention 1 actionable area to improve.
+3. Thank them warmly and conclude: "Thanks for practicing with ThinkAloudAI today, {candidate_name}! Your full score breakdown and feedback are available on your analysis report. Best of luck with your upcoming interviews!"
+"""
 
     # Format execution output nicely
     exec_raw = state.get("latest_execution")
@@ -237,13 +278,16 @@ async def generate_response(state: InterviewState) -> Dict[str, Any]:
         time_warning=time_warning,
         interview_type=formatted_type,
         stage_agenda_description=stage_agenda_desc,
+        track_intro_text=track_intro_text,
         intro_transition_text=intro_trans_text,
+        qa_transition_text=qa_trans_text,
+        track_wrap_up_instructions=wrap_up_instructions,
         current_active_question=formatted_q,
         latest_code=code_str,
         latest_execution=formatted_exec,
     )
 
-    # Smarter context injection
+    # Context injection
     extra_context = ""
 
     # Inject code context during any DSA/coding stages
@@ -253,13 +297,24 @@ async def generate_response(state: InterviewState) -> Dict[str, Any]:
         if formatted_exec and formatted_exec != "None":
             extra_context += f"\n\nLATEST TEST EXECUTION RESULT:\n<EXECUTION_OUTPUT>\n{formatted_exec}\n</EXECUTION_OUTPUT>"
 
-    # Only inject visual context during design/whiteboarding stages
+    # Inject visual context during design/whiteboarding stages
     if "system_design" in current_stage:
+        wb_graph = state.get("latest_whiteboard_graph", "")
+        if wb_graph:
+            extra_context += f"\n\nCURRENT WHITEBOARD DIAGRAM (Real-Time Architecture Components & Flows):\n<WHITEBOARD_GRAPH>\n{wb_graph}\n</WHITEBOARD_GRAPH>"
+
         whiteboard = state.get("latest_whiteboard_context", "")
-        if whiteboard and "Visual Context:" not in whiteboard:
+        if whiteboard and "not configured" not in whiteboard and "Failed to process" not in whiteboard:
             extra_context += f"\n\nWHITEBOARD VISUAL OBSERVATION:\n{whiteboard}"
 
-    full_system_prompt = f"{INTERVIEW_PERSONA}\n\n{TTS_RULES}\n\n{prompt}{extra_context}"
+        design_notes = state.get("latest_code", "")
+        if design_notes and design_notes != "None":
+            extra_context += f"\n\nCANDIDATE DESIGN NOTES & SUMMARY:\n<DESIGN_NOTES>\n{design_notes}\n</DESIGN_NOTES>"
+
+    # Select track-specific persona
+    selected_persona = INTERVIEW_PERSONAS.get(norm_type, INTERVIEW_PERSONAS["general"])
+
+    full_system_prompt = f"{selected_persona}\n\n{TTS_RULES}\n\n{prompt}{extra_context}"
 
     # Adaptive message window
     if current_stage.startswith("intro_"):
@@ -360,7 +415,22 @@ async def evaluate_and_route(state: InterviewState) -> Dict[str, Any]:
     current_idx = state.get("active_question_index", 0)
     active_question_index = current_idx  # default: no change
 
-    if trigger_next_q and current_idx < len(questions) - 1:
+    is_last_question = current_idx >= len(questions) - 1
+
+    # Stages that conclude a problem / question before moving to the next
+    question_end_stages = {
+        "dsa": [InterviewStage.DSA_TESTING.value],
+        "hr": [InterviewStage.BEHAVIORAL_FOLLOWUP.value],
+        "pm": [InterviewStage.PM_METRICS_AND_EXECUTION.value],
+        "ai_ml": [InterviewStage.AIML_SYSTEM.value],
+        "system_design": [InterviewStage.SYSTEM_DESIGN_DEEP_DIVE.value],
+    }
+
+    is_question_finished = trigger_next_q or (
+        current_stage in question_end_stages.get(normalized_type, []) and should_advance
+    )
+
+    if is_question_finished and not is_last_question:
         if normalized_type == "dsa":
             next_stage = InterviewStage.DSA_PRESENTATION.value
         elif normalized_type == "hr":
@@ -376,14 +446,16 @@ async def evaluate_and_route(state: InterviewState) -> Dict[str, Any]:
 
         active_question_index = current_idx + 1
         turns_in_stage = 0
+        state["latest_code"] = None
+        state["latest_execution"] = None
     elif current_stage == InterviewStage.COMPLETED.value:
         next_stage = InterviewStage.COMPLETED.value
         should_end = True
     elif current_stage == InterviewStage.WRAP_UP.value:
-        should_end = True
-        if should_advance:
+        if should_advance or turns_in_stage >= 4:
             next_stage = InterviewStage.COMPLETED.value
             turns_in_stage = 0
+            should_end = True
         else:
             next_stage = current_stage
     elif time_exceeded:

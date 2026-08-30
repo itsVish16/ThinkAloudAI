@@ -31,7 +31,7 @@ export interface CodeSubmitResponse {
 import { API_BASE_URL } from '../config/api';
 const API_URL = API_BASE_URL;
 
-export async function getDSAQuestions(limit: number = 100): Promise<APIDSAQuestion[]> {
+export async function getDSAQuestions(limit: number = 150): Promise<APIDSAQuestion[]> {
   const response = await apiClient.fetchWithAuth(`${API_URL}/dsa/questions?limit=${limit}`);
   if (!response.ok) {
     throw new Error('Failed to fetch DSA questions');
@@ -299,7 +299,16 @@ export async function submitSystemDesign(id: string | number, answer: string, to
     headers,
     body: JSON.stringify({ answer_text: answer, image_data: base64Image })
   });
-  if (!response.ok) throw new Error('Failed to submit system design');
+  if (!response.ok) {
+    let errorDetail = `Failed to submit system design (${response.status})`;
+    try {
+      const errJson = await response.json();
+      if (errJson.detail) {
+        errorDetail = typeof errJson.detail === 'string' ? errJson.detail : JSON.stringify(errJson.detail);
+      }
+    } catch {}
+    throw new Error(errorDetail);
+  }
   return response.json();
 }
 

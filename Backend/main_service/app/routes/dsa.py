@@ -28,7 +28,7 @@ async def list_questions(
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
     skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=100)
+    limit: int = Query(150, ge=1, le=500)
 ):
     return await DSAService.list_questions(db, redis, skip, limit)
 
@@ -53,23 +53,28 @@ async def get_latest_submission(
 ):
     return await DSAService.get_latest_submission(question_id, language, user_id, db)
 
-@router.post("/questions/{question_id}/run", response_model=CodeSubmitResponse, dependencies=[Depends(verify_jwt)])
+@router.post("/questions/{question_id}/run", response_model=CodeSubmitResponse)
 async def run_solution(
     question_id: int, 
     request: CodeSubmitRequest, 
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis)
 ):
+    if not request.session_id:
+        request.session_id = user_id
     return await DSAService.run_solution(question_id, request, db, redis)
 
-@router.post("/questions/{question_id}/submit", response_model=CodeSubmitResponse, dependencies=[Depends(verify_jwt)])
+@router.post("/questions/{question_id}/submit", response_model=CodeSubmitResponse)
 async def submit_solution(
     question_id: int, 
     request: CodeSubmitRequest, 
-    background_tasks: BackgroundTasks, 
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis)
 ):
+    if not request.session_id:
+        request.session_id = user_id
     return await DSAService.submit_solution(question_id, request, db, redis)
 
 @router.get("/submissions/{submission_id}/stream")
